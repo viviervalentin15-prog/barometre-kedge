@@ -54,6 +54,17 @@ families:
       op_margin:     { label: "Marge opérationnelle",                 direction: haut, unit: "%" }
       rev_growth:    { label: "Croissance du chiffre d'affaires",     direction: haut, unit: "%" }
 
+# Données manquantes
+#  - une valeur manquante reçoit une note neutre (la médiane du secteur = 50)
+#  - une entreprise en perte n'a pas de PER : elle reçoit 0 sur ce critère
+#  - certains critères ne s'appliquent pas à un secteur (dette des banques)
+#  - au-delà de max_missing critères manquants, l'entreprise n'est pas notée
+missing_data:
+  neutral_score: 50
+  max_missing: 3
+  not_applicable:
+    debt_equity: ["Financial Services"]
+
 # Score d'un secteur = part "entreprises" + part "tendance de marché",
 # puis ajustement selon le baromètre macro.
 sector_score:

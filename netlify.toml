@@ -4,6 +4,10 @@
   publish = "site"
   command = ""
 
+# Fonction du bouton « Mettre à jour » (voir netlify/functions/mise-a-jour.mjs)
+[functions]
+  directory = "netlify/functions"
+
 [[headers]]
   for = "/data/*"
   [headers.values]

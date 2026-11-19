@@ -28,8 +28,12 @@
         <button data-view="US">États-Unis</button>
         <button data-view="EZ">Zone euro</button>
       </div>
-      <div class="updated" id="updated"></div>
+      <div class="toolbar-right">
+        <div class="updated" id="updated"></div>
+        <button class="btn ghost small" id="update-btn" hidden>⟳ Mettre à jour</button>
+      </div>
     </section>
+    <div class="banner info" id="update-status" hidden></div>
     <div id="app"></div>
   </main>
 
@@ -38,6 +42,16 @@
     <button class="btn ghost" id="pool-clear">Vider</button>
     <a class="btn" href="#/pools">Voir la sélection</a>
   </div>
+
+  <dialog id="update-dialog">
+    <form method="dialog" id="update-form">
+      <h2>Mettre à jour les données</h2>
+      <p class="hint">La collecte récupère à nouveau toutes les données (baromètre, ~800 entreprises). Elle dure environ 20 minutes ; le site se rechargera tout seul à la fin.</p>
+      <label>Code de mise à jour <input type="password" id="update-code" autocomplete="off" required></label>
+      <p class="warn" id="update-error"></p>
+      <div class="dialog-actions"><button type="button" class="btn ghost" id="update-cancel">Annuler</button><button type="submit" class="btn" id="update-go">Lancer</button></div>
+    </form>
+  </dialog>
 
   <footer class="footer">Sources : FRED, OCDE, Eurostat, BCE, Yahoo Finance, Wikipédia · Projet étudiant, pas un conseil en investissement.</footer>
 </body>

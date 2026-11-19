@@ -315,18 +315,19 @@ def price_metrics(c: pd.Series) -> dict:
     out["perf_ytd"] = (last / ytd.iloc[0] - 1) * 100 if len(ytd) > 1 else np.nan
     if len(c) >= 200:
         out["ma200_gap"] = (last / c.iloc[-200:].mean() - 1) * 100
-    r = c.pct_change().dropna().iloc[-252:]
-    out["vol_1y"] = r.std() * math.sqrt(252) * 100
-    w = c.iloc[-252:]
-    out["max_dd_1y"] = ((w / w.cummax()) - 1).min() * 100
+    if len(c) >= 230:  # au moins ~1 an de cotation, sinon le risque est sous-estimé
+        r = c.pct_change().dropna().iloc[-252:]
+        out["vol_1y"] = r.std() * math.sqrt(252) * 100
+        w = c.iloc[-252:]
+        out["max_dd_1y"] = ((w / w.cummax()) - 1).min() * 100
     out["price"] = last
     return out
 
 
 def info_metrics(i: dict) -> dict:
-    def pos(x, cap=None):
+    def pos(x, cap=None, floor=0.0):
         x = rnd(x, 6)
-        if x is None or x <= 0:
+        if x is None or x <= floor:  # valeur négative, nulle ou aberrante : considérée comme manquante
             return np.nan
         return min(x, cap) if cap else x
 
@@ -336,9 +337,9 @@ def info_metrics(i: dict) -> dict:
 
     dy = rnd(i.get("dividendYield"), 6)
     return {
-        "pe": pos(i.get("trailingPE"), 300),        # PER négatif (pertes) : non noté
-        "pb": pos(i.get("priceToBook"), 100),
-        "div_yield": 0.0 if dy is None else dy,     # Yahoo le donne déjà en %
+        "pe": pos(i.get("trailingPE"), 300, 1.0),   # PER < 1 : erreur de données
+        "pb": pos(i.get("priceToBook"), 100, 0.1),  # P/B < 0,1 : erreur de devise chez Yahoo
+        "div_yield": 0.0 if dy is None else (dy if dy <= 25 else np.nan),  # Yahoo le donne déjà en %
         "beta": rnd(i.get("beta"), 4) if i.get("beta") is not None else np.nan,
         "debt_equity": rnd(i.get("debtToEquity"), 4) if i.get("debtToEquity") is not None else np.nan,
         "roe": pct(i.get("returnOnEquity")),
@@ -468,11 +469,40 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             if mid in df:
                 metric_scores[mid] = score_metric(df, mid, m["direction"], cfg["clip_percentile"], cfg["min_sector_size"])
     ms = pd.DataFrame(metric_scores)
-    fam_scores = pd.DataFrame({fid: ms[[m for m in f["metrics"] if m in ms]].mean(axis=1) for fid, f in fams.items()})
+
+    # Données manquantes : règles explicites (au lieu d'ignorer le critère, ce qui favorisait l'entreprise)
+    #  - entreprise en perte (marge nette < 0) sans PER   -> note 0 sur le PER
+    #  - dette / fonds propres pour la Finance            -> non applicable (critère retiré)
+    #  - autre valeur manquante                            -> note neutre de 50 (la médiane)
+    #  - plus de MAX_MISSING critères manquants            -> pas de score ("données insuffisantes")
+    mdq = cfg.get("missing_data", {})
+    max_missing = int(mdq.get("max_missing", 3))
+    neutral = float(mdq.get("neutral_score", 50))
+    na_rules = mdq.get("not_applicable", {"debt_equity": ["Financial Services"]})
+    status = pd.DataFrame("ok", index=ms.index, columns=ms.columns)
+    loss = pd.Series({t: (infos.get(t, {}).get("profitMargins") or 0) < 0 for t in df.index})
+    for m in ms.columns:
+        miss = df[m].isna()
+        status.loc[miss, m] = "manquant"
+        if m == "pe":
+            status.loc[miss & loss, m] = "perte"
+        for sector in na_rules.get(m, []):
+            status.loc[df["sector"] == sector, m] = "non applicable"
+    final = ms.copy()
+    final[status == "manquant"] = neutral
+    final[status == "perte"] = 0.0
+    final[status == "non applicable"] = np.nan
+    df["n_missing"] = (status == "manquant").sum(axis=1)
+    df["loss"] = loss.reindex(df.index).fillna(False)
+    fam_scores = pd.DataFrame({fid: final[[m for m in f["metrics"] if m in final]].mean(axis=1) for fid, f in fams.items()})
     fw = pd.Series({fid: f["weight"] for fid, f in fams.items()})
     avail = fam_scores.notna()
     df["score"] = (fam_scores.fillna(0) * fw).sum(axis=1) / (avail * fw).sum(axis=1)
-    df.loc[avail.sum(axis=1) < 2, "score"] = np.nan
+    insufficient = df["n_missing"] > max_missing
+    df.loc[insufficient, "score"] = np.nan
+    log(f"Données manquantes : {int((df.n_missing > 0).sum())} entreprises complétées par une note neutre, "
+        f"{int(df.loss.sum())} en perte (PER noté 0), {int(insufficient.sum())} sans score (plus de {max_missing} critères manquants)")
+    ms = final
     for fid in fams:
         df[f"f_{fid}"] = fam_scores[fid]
     df["rank_sector"] = df.groupby("sector")["score"].rank(ascending=False, method="min")
@@ -561,6 +591,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "t": t, "n": row["name"], "z": row["zone"], "c": COUNTRY_FR.get(row["country"], row["country"]),
             "s": row["sector"], "i": row["industry"], "cap": rnd(row["cap_usd"] / 1e9, 1),
             "sc": rnd(row["score"], 1), **{f"f_{fid}": rnd(row[f"f_{fid}"], 1) for fid in fams},
+            "miss": int(row["n_missing"]), "loss": bool(row["loss"]),
             "p1y": rnd(row.get("perf_1y"), 1), "pytd": rnd(row.get("perf_ytd"), 1), "pe": rnd(row.get("pe"), 1),
             "dy": rnd(row.get("div_yield"), 2), "rk": int(row["rank_sector"]) if pd.notna(row["rank_sector"]) else None,
         })
@@ -581,7 +612,9 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "score": rnd(row["score"], 1), "rank_sector": list_rows[-1]["rk"],
             "sector_size": int((df.sector == row["sector"]).sum()),
             "families": {fid: rnd(row[f"f_{fid}"], 1) for fid in fams},
+            "n_missing": int(row["n_missing"]), "loss": bool(row["loss"]),
             "metrics": {m: {"value": rnd(row.get(m)), "score": rnd(ms.loc[t, m], 1) if m in ms else None,
+                            "status": status.loc[t, m] if m in status else "manquant",
                             "sector_median": rnd(sector_avgs.loc[row["sector"], m]) if m in sector_avgs else None}
                         for f in fams.values() for m in f["metrics"]},
             "perf": {k: rnd(row.get(k), 1) for k in ("perf_1m", "perf_3m", "perf_ytd", "perf_1y", "perf_5y")},

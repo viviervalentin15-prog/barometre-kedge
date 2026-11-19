@@ -32,6 +32,13 @@ const pctCls = (x) => (x > 0 ? "up" : x < 0 ? "down" : "");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const safeName = (t) => t.replace(/[^A-Za-z0-9]/g, "_");
 const scorePill = (s) => `<span class="score-pill" style="background:${scoreColor(s)}">${fmt(s, 0)}</span>`;
+/* score d'une entreprise de la liste : n.d. si données insuffisantes, * si des critères manquants ont reçu une note neutre */
+function companyScore(c) {
+  if (c.sc == null) return `<span class="score-pill na" title="Données insuffisantes : plus de 3 critères manquants">n.d.</span>`;
+  const notes = [c.miss ? `${c.miss} critère${c.miss > 1 ? "s" : ""} manquant${c.miss > 1 ? "s" : ""} : note neutre de 50 appliquée` : "", c.loss ? "entreprise en perte : PER noté 0" : ""].filter(Boolean).join(" · ");
+  return scorePill(c.sc) + (notes ? `<sup class="flag" title="${notes}">${c.miss ? "*" : "†"}</sup>` : "");
+}
+const STATUS_LABEL = { manquant: "manquant → 50", perte: "en perte → 0", "non applicable": "non applicable" };
 const capLabel = (bn) => (bn == null ? "–" : bn >= 1000 ? fmt(bn / 1000, 2) + " T$" : fmt(bn, bn >= 100 ? 0 : 1) + " Md$");
 function monthLabel(ym) {
   const [y, m] = ym.split("-").map(Number);
@@ -63,6 +70,57 @@ const Pool = {
   },
 };
 
+/* ---------- bouton « Mettre à jour » (fonction Netlify /api/mise-a-jour) ---------- */
+const Updater = {
+  api: "/api/mise-a-jour", timer: null,
+  async init() {
+    let st;
+    try { const r = await fetch(this.api, { cache: "no-store" }); if (!r.ok) return; st = await r.json(); } catch { return; }
+    const btn = document.getElementById("update-btn");
+    btn.hidden = false;
+    const dlg = document.getElementById("update-dialog");
+    btn.addEventListener("click", () => { document.getElementById("update-error").textContent = ""; dlg.showModal(); document.getElementById("update-code").focus(); });
+    document.getElementById("update-cancel").addEventListener("click", () => dlg.close());
+    document.getElementById("update-form").addEventListener("submit", (e) => { e.preventDefault(); this.launch(); });
+    if (!st.configured) btn.title = "Le bouton doit encore être configuré dans Netlify";
+    if (st.run && st.run.status !== "completed") this.watch(st.run);
+  },
+  async launch() {
+    const go = document.getElementById("update-go"), err = document.getElementById("update-error");
+    go.disabled = true; err.textContent = "";
+    try {
+      const r = await fetch(this.api, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: document.getElementById("update-code").value }) });
+      const res = await r.json();
+      if (!r.ok) { err.textContent = res.error || "Erreur"; if (r.status === 409 && res.run) { document.getElementById("update-dialog").close(); this.watch(res.run); } return; }
+      document.getElementById("update-dialog").close();
+      document.getElementById("update-code").value = "";
+      this.watch({ status: "queued", created_at: new Date().toISOString() });
+    } catch { err.textContent = "Impossible de joindre le serveur."; } finally { go.disabled = false; }
+  },
+  show(html) { const b = document.getElementById("update-status"); b.hidden = !html; b.innerHTML = html || ""; },
+  watch(run) {
+    const btn = document.getElementById("update-btn");
+    btn.disabled = true;
+    const startedAt = Date.parse(run.created_at), before = S.sectors?.updated || S.macro?.updated;
+    const tick = async () => {
+      const min = Math.max(0, Math.round((Date.now() - startedAt) / 60000));
+      this.show(`⟳ Mise à jour des données en cours depuis ${min} min (environ 20 min au total). Vous pouvez continuer à naviguer.`);
+      let st; try { st = await (await fetch(this.api, { cache: "no-store" })).json(); } catch { return; }
+      const r = st.run;
+      if (!r || r.status !== "completed" || Date.parse(r.created_at) < startedAt - 120000) return;
+      clearInterval(this.timer);
+      if (r.conclusion !== "success") { this.show(`La mise à jour a échoué. <a href="${r.url}" target="_blank" rel="noopener">Voir le détail sur GitHub</a>.`); btn.disabled = false; return; }
+      this.show("Collecte terminée : publication des nouvelles données sur le site…");
+      for (let k = 0; k < 20; k++) {           // Netlify republie le site en moins d'une minute en général
+        await new Promise((ok) => setTimeout(ok, 15000));
+        try { const s2 = await getJSON("data/sectors.json"); if (s2.updated !== before) { location.reload(); return; } } catch { /* on réessaie */ }
+      }
+      this.show("Collecte terminée. Rechargez la page pour voir les nouvelles données."); btn.disabled = false;
+    };
+    tick(); this.timer = setInterval(tick, 20000);
+  },
+};
+
 /* ---------- démarrage ---------- */
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -90,6 +148,7 @@ async function init() {
   window.addEventListener("resize", () => Object.values(S.charts).forEach((c) => c.resize()));
   Pool.load();
   route();
+  Updater.init();
 }
 
 function route() {
@@ -250,7 +309,8 @@ const SIZE_BUCKETS = [["", "Toutes tailles"], ["200-", "Plus de 200 Md$"], ["50-
 function pageCompanies(app) {
   if (!S.companies) { app.innerHTML = '<div class="card">Les données des entreprises arriveront après la prochaine collecte.</div>'; return; }
   app.innerHTML = `<section class="card"><div class="card-head"><h2>Toutes les entreprises, classées par score</h2></div>
-    <p class="hint">Chaque critère est noté par rapport aux entreprises du même secteur. Cochez des entreprises pour les comparer dans un pool.</p>
+    <p class="hint">Chaque critère est noté par rapport aux entreprises du même secteur. Cochez des entreprises pour les comparer dans un pool.<br>
+    <b>*</b> critère(s) manquant(s) remplacé(s) par une note neutre de 50 · <b>†</b> entreprise en perte (PER noté 0) · <b>n.d.</b> plus de 3 critères manquants : pas de score.</p>
     <div id="table"></div></section>`;
   companyTable(document.getElementById("table"), {});
 }
@@ -298,7 +358,7 @@ function companyTable(box, fixed) {
       <td class="muted">${esc(fixed.sector ? c.i : sectorLabel(c.s))}</td>
       <td class="muted nowrap">${esc(c.c)}</td>
       <td class="num nowrap">${capLabel(c.cap)}</td>
-      <td class="num">${scorePill(c.sc)}</td>
+      <td class="num nowrap">${companyScore(c)}</td>
       ${fams.map((f) => `<td class="num fam" style="color:${scoreColor(c["f_" + f.id])}">${fmt(c["f_" + f.id], 0)}</td>`).join("")}
       <td class="num nowrap ${pctCls(c.p1y)}">${signed(c.p1y)} %</td>
       <td class="num">${fmt(c.pe)}</td>
@@ -402,14 +462,16 @@ async function pageCompany(app, ticker) {
           <label class="check"><input type="checkbox" id="add-pool" ${Pool.items.has(d.ticker) ? "checked" : ""}> Ajouter au pool</label>
           <button class="btn ghost small" id="cmp-peers">Comparer avec ses concurrents</button></div>
       </div>
-      <div class="big-score" style="color:${scoreColor(d.score)}">${fmt(d.score)}<small>/100</small></div>
+      <div class="big-score" style="color:${scoreColor(d.score)}">${d.score == null ? "n.d." : fmt(d.score)}<small>/100</small></div>
     </section>
+    ${d.score == null ? `<div class="banner">Score non calculé : ${d.n_missing} critères sur 13 sont manquants chez Yahoo Finance (entreprise récemment cotée ou données incomplètes). Les critères disponibles restent affichés.</div>`
+      : d.n_missing || d.loss ? `<div class="banner info">${d.n_missing ? `${d.n_missing} critère${d.n_missing > 1 ? "s" : ""} manquant${d.n_missing > 1 ? "s" : ""} : note neutre de 50 appliquée, pour ne pas avantager ni pénaliser l'entreprise. ` : ""}${d.loss ? "L'entreprise est en perte : son PER n'existe pas et reçoit la note 0." : ""}</div>` : ""}
     <section class="kpis">
       ${kpi("Cours", fmt(d.price, 2) + " " + cur)}
       ${kpi("Capitalisation", capLabel(d.cap_usd / 1e9))}
       ${kpi("Performance 1 an", signed(d.perf.perf_1y) + " %", pctCls(d.perf.perf_1y))}
       ${kpi("Depuis le 1er janvier", signed(d.perf.perf_ytd) + " %", pctCls(d.perf.perf_ytd))}
-      ${kpi("PER", fu(d.metrics.pe.value, 1, "x"), "", `secteur ${fu(d.metrics.pe.sector_median, 1, "x")}`)}
+      ${kpi("PER", d.loss && d.metrics.pe.value == null ? "en perte" : fu(d.metrics.pe.value, 1, "x"), "", `secteur ${fu(d.metrics.pe.sector_median, 1, "x")}`)}
       ${kpi("Dividende", fu(d.metrics.div_yield.value, 2, "%"), "", `secteur ${fu(d.metrics.div_yield.sector_median, 2, "%")}`)}
     </section>
     <section class="kpis">
@@ -436,7 +498,7 @@ async function pageCompany(app, ticker) {
       <div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critère</th><th class="num">Valeur</th><th class="num">Médiane du secteur</th><th class="num">Note /100</th></tr></thead>
       <tbody>${fams.map((f) => f.metrics.map((m, k) => { const x = d.metrics[m.id] || {}; return `<tr>
         <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${m.label}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
-        <td class="num">${fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
+        <td class="num">${x.status && x.status !== "ok" ? `<span class="status">${STATUS_LABEL[x.status] || x.status}</span>` : fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${x.status === "non applicable" ? "–" : scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
     </section>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
