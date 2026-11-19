@@ -1,0 +1,56 @@
+{
+ "entreprises": {
+  "nb_dates": 38,
+  "periode": [
+   "2023-01-13",
+   "2025-11-14"
+  ],
+  "dynamique": {
+   "correlation_moyenne": 0.078,
+   "pct_dates_correlation_positive": 82.0,
+   "ecart_quintiles_perf12m": 7.4,
+   "ecart_quintiles_relatif_secteur": 7.8,
+   "dispersion_top": 61.2,
+   "dispersion_bas": 66.4
+  },
+  "risque": {
+   "correlation_moyenne": -0.072,
+   "pct_dates_correlation_positive": 32.0,
+   "ecart_quintiles_perf12m": -26.0,
+   "ecart_quintiles_relatif_secteur": -26.2,
+   "dispersion_top": 25.2,
+   "dispersion_bas": 100.1
+  },
+  "combine": {
+   "correlation_moyenne": 0.005,
+   "pct_dates_correlation_positive": 47.0,
+   "ecart_quintiles_perf12m": -10.9,
+   "ecart_quintiles_relatif_secteur": -10.6,
+   "dispersion_top": 30.2,
+   "dispersion_bas": 80.4
+  }
+ },
+ "controles": {
+  "correlation_score_potentiel_analystes": -0.49,
+  "correlation_score_perf_passee_1an": 0.4,
+  "score_moyen_par_recommandation": {
+   "buy": 52.3,
+   "hold": 53.5,
+   "none": 51.7,
+   "strong_buy": 48.5,
+   "underperform": 56.1
+  },
+  "correlations_entre_familles": {
+   "f_valorisation/f_dynamique": -0.13,
+   "f_valorisation/f_risque": 0.24,
+   "f_valorisation/f_qualite": -0.24,
+   "f_dynamique/f_risque": 0.38,
+   "f_dynamique/f_qualite": 0.07,
+   "f_risque/f_qualite": -0.06
+  },
+  "secteurs_poids_tendance": 0.4,
+  "secteurs_correlation_classement_avec_vs_sans_tendance": -0.17,
+  "secteurs_ecart_type_part_entreprises": 2.6,
+  "secteurs_ecart_type_part_tendance": 24.9
+ }
+}
