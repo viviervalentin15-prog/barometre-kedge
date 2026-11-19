@@ -15,6 +15,13 @@ un scoring des secteurs et des entreprises du S&P 500 et de l'Euro Stoxx.
 | `data/raw/` | Dernière version valide de chaque série, réutilisée si une source tombe en panne |
 | `.github/workflows/mise-a-jour.yml` | Collecte automatique sur GitHub Actions |
 
+## Hébergement
+
+Le site (dossier `site/`) est publié gratuitement sur **Vercel** (offre Hobby), qui le republie à chaque
+envoi sur la branche `main`. La fonction `api/mise-a-jour.js` sert le bouton « Mettre à jour » : elle lance
+la collecte GitHub Actions. Variables à définir dans Vercel : `GITHUB_TOKEN` (jeton GitHub limité à ce dépôt,
+droit « Actions : Read and write ») et `UPDATE_CODE` (le code à taper sur le site).
+
 ## Mettre à jour les données
 
 Onglet **Actions** du dépôt → **Mise à jour des données** → **Run workflow**.

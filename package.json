@@ -1,0 +1,6 @@
+{
+  "name": "barometre-kedge",
+  "private": true,
+  "type": "module",
+  "description": "Fonction du bouton Mettre à jour (Vercel). Le site lui-même est statique, dans site/."
+}

@@ -1,8 +1,8 @@
-// Fonction Netlify derrière le bouton « Mettre à jour » du site.
+// Fonction Vercel derrière le bouton « Mettre à jour » du site.
 //   GET  /api/mise-a-jour        -> état de la dernière collecte (en cours, terminée...)
 //   POST /api/mise-a-jour {code} -> lance la collecte sur GitHub Actions si le code est bon
 //
-// Variables à définir dans Netlify (Site configuration > Environment variables) :
+// Variables à définir dans Vercel (Project > Settings > Environment Variables) :
 //   GITHUB_TOKEN : jeton GitHub limité à ce dépôt, droit « Actions : Read and write »
 //   UPDATE_CODE  : le code à taper sur le site pour lancer une mise à jour
 //   GITHUB_REPO  : (facultatif) propriétaire/dépôt, par défaut celui du projet
@@ -43,13 +43,13 @@ function sameCode(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export default async (req) => {
+async function handle(req) {
   if (req.method === "GET") {
     return json({ configured: Boolean(process.env.GITHUB_TOKEN && process.env.UPDATE_CODE), run: await lastRun() });
   }
   if (req.method !== "POST") return json({ error: "Méthode non autorisée" }, 405);
   if (!process.env.GITHUB_TOKEN || !process.env.UPDATE_CODE) {
-    return json({ error: "Le bouton n'est pas encore configuré (variables GITHUB_TOKEN et UPDATE_CODE manquantes dans Netlify)." }, 503);
+    return json({ error: "Le bouton n'est pas encore configuré (variables GITHUB_TOKEN et UPDATE_CODE manquantes dans Vercel)." }, 503);
   }
   let code = "";
   try { code = (await req.json()).code || ""; } catch { /* corps vide */ }
@@ -65,6 +65,7 @@ export default async (req) => {
   const r = await github(`/actions/workflows/${WORKFLOW}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
   if (r.status !== 204) return json({ error: `GitHub a refusé la demande (${r.status}). Vérifiez le jeton GITHUB_TOKEN.` }, 502);
   return json({ ok: true, message: "Mise à jour lancée." }, 202);
-};
+}
 
-export const config = { path: "/api/mise-a-jour" };
+export const GET = handle;
+export const POST = handle;
