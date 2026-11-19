@@ -188,9 +188,36 @@ def _eurostat_monthly(dataset: str, filters: dict) -> pd.Series:
     return x
 
 
+def eurostat_auto(dataset: str, geos: tuple, prefer: dict) -> pd.Series:
+    """Lit un jeu Eurostat dont on ne connaît pas tous les codes à l'avance.
+    1) demande le dernier mois pour découvrir les codes disponibles ;
+    2) choisit pour chaque dimension le code préféré (sinon le premier) ;
+    3) télécharge l'historique complet avec ces codes."""
+    url = f"https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{dataset}"
+    errors = []
+    for geo in geos:
+        try:
+            probe = _get(url, params={"format": "JSON", "lang": "en", "geo": geo, "lastTimePeriod": 1}).json()
+            if not probe.get("value"):
+                raise RuntimeError("aucune valeur")
+            filters = {"geo": geo, "sinceTimePeriod": "2003-01"}
+            for dim in probe["id"]:
+                if dim in ("geo", "time"):
+                    continue
+                codes = list(probe["dimension"][dim]["category"]["index"].keys())
+                wanted = next((pref for key, prefs in prefer.items() if key in dim.lower()
+                               for pref in prefs if pref in codes), codes[0])
+                filters[dim] = wanted
+            x = _eurostat_monthly(dataset, filters)
+            return x
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{geo}: {e}")
+    raise RuntimeError(f"Eurostat {dataset} : " + " | ".join(errors))
+
+
 def eurostat_unemployment() -> pd.Series:
     """Taux de chômage zone euro : BCE en priorité, Eurostat en secours."""
-    candidates = [("BCE chômage zone euro", lambda: ecb("STS/M.I9.S.UNEH.RTT000.4.000"))]
+    candidates = [("BCE chômage zone euro", lambda: ecb("LFSI/M.I9.S.UNEHRT.TOTAL0.15_74.T"))]
     for geo in ("EA20", "EA"):
         for age in ("Y15-74", "TOTAL"):
             candidates.append((f"Eurostat chômage {geo}", lambda g=geo, a=age: _eurostat_monthly(
@@ -202,7 +229,13 @@ def eurostat_unemployment() -> pd.Series:
 def hicp_ez() -> pd.Series:
     """Inflation HICP zone euro sur 1 an. La composition de la zone change (Bulgarie en 2026) :
     on interroge plusieurs codes et on garde la série la plus à jour."""
-    candidates = [("BCE HICP zone euro", lambda: ecb("ICP/M.U2.N.000000.4.ANR"))]
+    candidates = [
+        # Nouvelle nomenclature ECOICOP 2, publiée depuis 2026
+        ("Eurostat HICP zone euro (ECOICOP 2)", lambda: eurostat_auto(
+            "prc_hicp_minr", ("EA", "EA21", "EA20"),
+            {"unit": ["RCH_A"], "coicop": ["TOTAL", "CP00", "_T", "CP"]})),
+        ("BCE HICP zone euro", lambda: ecb("ICP/M.U2.N.000000.4.ANR")),
+    ]
     for geo in ("EA", "EA21", "EA20"):
         candidates.append((f"Eurostat HICP {geo}", lambda g=geo: _eurostat_monthly(
             "prc_hicp_manr", {"geo": g, "coicop": "CP00", "unit": "RCH_A", "sinceTimePeriod": "2003-01"})))
