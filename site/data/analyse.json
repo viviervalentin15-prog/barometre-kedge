@@ -52,5 +52,397 @@
   "secteurs_correlation_classement_avec_vs_sans_tendance": -0.17,
   "secteurs_ecart_type_part_entreprises": 2.6,
   "secteurs_ecart_type_part_tendance": 24.9
+ },
+ "macro": {
+  "commun": {
+   "site": {
+    "correlation_score_perf12m": -0.42,
+    "correlation_variation3m_perf12m": 0.11,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 14,
+      "perf_12m": 28.8,
+      "pct_positif": 100.0,
+      "pire_baisse_12m": -5.7
+     },
+     {
+      "tranche": "45-55",
+      "mois": 17,
+      "perf_12m": 7.6,
+      "pct_positif": 76.0,
+      "pire_baisse_12m": -14.1
+     },
+     {
+      "tranche": "55-65",
+      "mois": 50,
+      "perf_12m": 8.8,
+      "pct_positif": 78.0,
+      "pire_baisse_12m": -7.6
+     },
+     {
+      "tranche": "> 65",
+      "mois": 170,
+      "perf_12m": 4.8,
+      "pct_positif": 71.0,
+      "pire_baisse_12m": -6.9
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 5.8,
+      "volatilite": 14.9,
+      "pire_baisse": -54.2,
+      "ratio_rendement_risque": 0.39,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 4.4,
+      "volatilite": 13.8,
+      "pire_baisse": -39.8,
+      "ratio_rendement_risque": 0.32,
+      "mois_investis_pct": 95.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 5.2,
+      "volatilite": 12.8,
+      "pire_baisse": -29.1,
+      "ratio_rendement_risque": 0.41,
+      "mois_investis_pct": 92.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 5.1,
+      "volatilite": 11.8,
+      "pire_baisse": -29.1,
+      "ratio_rendement_risque": 0.43,
+      "mois_investis_pct": 88.0
+     }
+    }
+   },
+   "temps_reel": {
+    "correlation_score_perf12m": -0.21,
+    "correlation_variation3m_perf12m": 0.2,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 21,
+      "perf_12m": 0.4,
+      "pct_positif": 52.0,
+      "pire_baisse_12m": -24.0
+     },
+     {
+      "tranche": "45-55",
+      "mois": 13,
+      "perf_12m": 15.8,
+      "pct_positif": 100.0,
+      "pire_baisse_12m": -5.6
+     },
+     {
+      "tranche": "55-65",
+      "mois": 40,
+      "perf_12m": 11.3,
+      "pct_positif": 78.0,
+      "pire_baisse_12m": -5.1
+     },
+     {
+      "tranche": "> 65",
+      "mois": 142,
+      "perf_12m": 7.5,
+      "pct_positif": 76.0,
+      "pire_baisse_12m": -6.0
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 5.4,
+      "volatilite": 15.8,
+      "pire_baisse": -47.6,
+      "ratio_rendement_risque": 0.34,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 7.5,
+      "volatilite": 13.6,
+      "pire_baisse": -24.1,
+      "ratio_rendement_risque": 0.55,
+      "mois_investis_pct": 91.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 6.0,
+      "volatilite": 13.3,
+      "pire_baisse": -29.5,
+      "ratio_rendement_risque": 0.45,
+      "mois_investis_pct": 89.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 6.1,
+      "volatilite": 12.5,
+      "pire_baisse": -29.1,
+      "ratio_rendement_risque": 0.49,
+      "mois_investis_pct": 85.0
+     }
+    }
+   }
+  },
+  "US": {
+   "site": {
+    "correlation_score_perf12m": -0.34,
+    "correlation_variation3m_perf12m": 0.14,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 14,
+      "perf_12m": 31.8,
+      "pct_positif": 100.0,
+      "pire_baisse_12m": -5.5
+     },
+     {
+      "tranche": "45-55",
+      "mois": 16,
+      "perf_12m": 6.5,
+      "pct_positif": 75.0,
+      "pire_baisse_12m": -12.8
+     },
+     {
+      "tranche": "55-65",
+      "mois": 43,
+      "perf_12m": 11.0,
+      "pct_positif": 81.0,
+      "pire_baisse_12m": -8.4
+     },
+     {
+      "tranche": "> 65",
+      "mois": 178,
+      "perf_12m": 8.6,
+      "pct_positif": 80.0,
+      "pire_baisse_12m": -5.6
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 8.7,
+      "volatilite": 14.8,
+      "pire_baisse": -52.6,
+      "ratio_rendement_risque": 0.59,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 7.0,
+      "volatilite": 13.6,
+      "pire_baisse": -37.5,
+      "ratio_rendement_risque": 0.52,
+      "mois_investis_pct": 95.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 7.6,
+      "volatilite": 12.3,
+      "pire_baisse": -25.3,
+      "ratio_rendement_risque": 0.62,
+      "mois_investis_pct": 91.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 8.2,
+      "volatilite": 11.9,
+      "pire_baisse": -25.3,
+      "ratio_rendement_risque": 0.69,
+      "mois_investis_pct": 89.0
+     }
+    }
+   },
+   "temps_reel": {
+    "correlation_score_perf12m": -0.2,
+    "correlation_variation3m_perf12m": 0.22,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 18,
+      "perf_12m": -3.1,
+      "pct_positif": 44.0,
+      "pire_baisse_12m": -27.7
+     },
+     {
+      "tranche": "45-55",
+      "mois": 14,
+      "perf_12m": 19.5,
+      "pct_positif": 100.0,
+      "pire_baisse_12m": -3.9
+     },
+     {
+      "tranche": "55-65",
+      "mois": 22,
+      "perf_12m": 13.9,
+      "pct_positif": 86.0,
+      "pire_baisse_12m": -4.4
+     },
+     {
+      "tranche": "> 65",
+      "mois": 162,
+      "perf_12m": 12.1,
+      "pct_positif": 85.0,
+      "pire_baisse_12m": -4.8
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 8.9,
+      "volatilite": 15.6,
+      "pire_baisse": -47.5,
+      "ratio_rendement_risque": 0.57,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 11.3,
+      "volatilite": 13.7,
+      "pire_baisse": -24.8,
+      "ratio_rendement_risque": 0.83,
+      "mois_investis_pct": 92.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 9.3,
+      "volatilite": 13.2,
+      "pire_baisse": -31.6,
+      "ratio_rendement_risque": 0.7,
+      "mois_investis_pct": 89.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 9.1,
+      "volatilite": 12.4,
+      "pire_baisse": -20.0,
+      "ratio_rendement_risque": 0.73,
+      "mois_investis_pct": 86.0
+     }
+    }
+   }
+  },
+  "EZ": {
+   "site": {
+    "correlation_score_perf12m": -0.45,
+    "correlation_variation3m_perf12m": -0.0,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 15,
+      "perf_12m": 23.7,
+      "pct_positif": 93.0,
+      "pire_baisse_12m": -8.1
+     },
+     {
+      "tranche": "45-55",
+      "mois": 19,
+      "perf_12m": 11.7,
+      "pct_positif": 84.0,
+      "pire_baisse_12m": -11.6
+     },
+     {
+      "tranche": "55-65",
+      "mois": 57,
+      "perf_12m": 6.8,
+      "pct_positif": 79.0,
+      "pire_baisse_12m": -8.6
+     },
+     {
+      "tranche": "> 65",
+      "mois": 134,
+      "perf_12m": -1.5,
+      "pct_positif": 48.0,
+      "pire_baisse_12m": -10.7
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 2.0,
+      "volatilite": 17.3,
+      "pire_baisse": -56.2,
+      "ratio_rendement_risque": 0.11,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 1.3,
+      "volatilite": 15.7,
+      "pire_baisse": -41.8,
+      "ratio_rendement_risque": 0.08,
+      "mois_investis_pct": 94.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 0.8,
+      "volatilite": 14.8,
+      "pire_baisse": -40.6,
+      "ratio_rendement_risque": 0.05,
+      "mois_investis_pct": 92.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 1.0,
+      "volatilite": 14.1,
+      "pire_baisse": -45.5,
+      "ratio_rendement_risque": 0.07,
+      "mois_investis_pct": 87.0
+     }
+    }
+   },
+   "temps_reel": {
+    "correlation_score_perf12m": -0.22,
+    "correlation_variation3m_perf12m": 0.07,
+    "par_niveau": [
+     {
+      "tranche": "< 45",
+      "mois": 18,
+      "perf_12m": -4.7,
+      "pct_positif": 44.0,
+      "pire_baisse_12m": -25.3
+     },
+     {
+      "tranche": "45-55",
+      "mois": 38,
+      "perf_12m": 13.4,
+      "pct_positif": 87.0,
+      "pire_baisse_12m": -6.9
+     },
+     {
+      "tranche": "55-65",
+      "mois": 67,
+      "perf_12m": 7.5,
+      "pct_positif": 73.0,
+      "pire_baisse_12m": -7.5
+     },
+     {
+      "tranche": "> 65",
+      "mois": 93,
+      "perf_12m": 0.8,
+      "pct_positif": 53.0,
+      "pire_baisse_12m": -8.7
+     }
+    ],
+    "strategies": {
+     "achat_conservation": {
+      "rendement_annuel": 1.8,
+      "volatilite": 17.6,
+      "pire_baisse": -48.3,
+      "ratio_rendement_risque": 0.1,
+      "mois_investis_pct": null
+     },
+     "investi_si_score_45": {
+      "rendement_annuel": 3.0,
+      "volatilite": 15.9,
+      "pire_baisse": -29.7,
+      "ratio_rendement_risque": 0.19,
+      "mois_investis_pct": 92.0
+     },
+     "investi_si_score_50": {
+      "rendement_annuel": 1.1,
+      "volatilite": 14.2,
+      "pire_baisse": -43.1,
+      "ratio_rendement_risque": 0.07,
+      "mois_investis_pct": 85.0
+     },
+     "investi_si_score_55": {
+      "rendement_annuel": 1.4,
+      "volatilite": 12.9,
+      "pire_baisse": -33.8,
+      "ratio_rendement_risque": 0.11,
+      "mois_investis_pct": 75.0
+     }
+    }
+   }
+  }
  }
 }
