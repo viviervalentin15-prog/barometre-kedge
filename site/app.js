@@ -180,7 +180,8 @@ function pageHome(app) {
         <div class="label">Baromètre macro</div>
         <div class="mini-score" style="color:${scoreColor(M.score)}">${fmt(M.score)}<small> / 100</small></div>
         <div class="signal" style="color:${scoreColor(M.score)}">${M.signal.label}</div>
-        <div class="deltas"><span>12 mois <b class="${pctCls(M.delta_12m)}">${signed(M.delta_12m)}</b></span><span>3 mois <b class="${pctCls(M.delta_3m)}">${signed(M.delta_3m)}</b></span></div>
+        <div class="trend ${M.trend?.tone || ""}">Tendance 3 mois : <b>${M.trend?.label || "–"}</b> (${signed(M.delta_3m)})</div>
+        <div class="deltas"><span>12 mois <b class="${pctCls(M.delta_12m)}">${signed(M.delta_12m)}</b></span><span>1 mois <b class="${pctCls(M.delta_1m)}">${signed(M.delta_1m)}</b></span></div>
         <div class="mini-pillars">${S.macro.pillars.map((p) => `<div><span>${p.label}</span><div class="bar"><span style="width:${M.pillars[p.id] ?? 0}%;background:${scoreColor(M.pillars[p.id])}"></span></div><b>${fmt(M.pillars[p.id], 0)}</b></div>`).join("")}</div>
         <div class="more">Voir le baromètre détaillé →</div>
       </a>
@@ -196,7 +197,7 @@ function pageHome(app) {
     </section>
     <section class="card">
       <div class="card-head"><h2>De quoi est fait le score de chaque secteur ?</h2></div>
-      <p class="hint">Score = ${fmt(S.sectors.method.company_weight * 100, 0)} % moyenne des entreprises + ${fmt(S.sectors.method.trend_weight * 100, 0)} % tendance de marché + ajustement selon le baromètre macro (cycliques favorisés quand le macro est au-dessus de 50, défensifs sinon).</p>
+      <p class="hint">Score = ${fmt(S.sectors.method.company_weight * 100, 0)} % note des entreprises (critères comparés à tout l'univers) + ${fmt(S.sectors.method.trend_weight * 100, 0)} % tendance de marché + ajustement selon le baromètre macro (cycliques favorisés quand le macro est au-dessus de 50, défensifs sinon).</p>
       <div id="sector-decomp" class="chart" style="height:${sv.sectors.length * 30 + 60}px"></div>
     </section>` : ""}`;
   if (!sv) return;
@@ -229,7 +230,8 @@ function readingText(M, sv) {
   const worst = sv.sectors.slice(-3).reverse().map((s) => s.label).join(", ");
   const tilt = M.score >= 50 ? "favorise légèrement les secteurs cycliques" : "favorise les secteurs défensifs";
   const n = S.companies ? S.companies.companies.filter((c) => VIEW_ZONES[S.view].includes(c.z)).length : 0;
-  return `<p>Le baromètre macro est à <b>${fmt(M.score)}</b> (${M.signal.label.toLowerCase()}), ${M.delta_12m < 0 ? "en recul" : "en hausse"} de ${fmt(Math.abs(M.delta_12m))} points sur un an. Ce contexte ${tilt}.</p>
+  const trendTxt = M.trend ? ` Sur 3 mois, il est <b>${M.trend.label.toLowerCase()}</b> (${signed(M.delta_3m)} points) : d'après nos tests depuis 2005, c'est cette tendance, plus que le niveau, qui accompagne la suite des marchés.` : "";
+  return `<p>Le baromètre macro est à <b>${fmt(M.score)}</b> (${M.signal.label.toLowerCase()}), ${M.delta_12m < 0 ? "en recul" : "en hausse"} de ${fmt(Math.abs(M.delta_12m))} points sur un an.${trendTxt} Ce contexte ${tilt}.</p>
     <p>Secteurs les mieux notés : <b>${best}</b>.<br>Secteurs les moins bien notés : <b>${worst}</b>.</p>
     <p class="hint">${n} entreprises analysées · <a href="#/entreprises">voir le classement complet →</a></p>`;
 }
@@ -278,7 +280,7 @@ function pageSector(app, id) {
       <div class="card"><div class="card-head"><h2>Indice du secteur sur 5 ans</h2></div>
         <p class="hint">Moyenne équipondérée des cours des entreprises du secteur, base 100.</p><div id="sector-index" class="chart chart-md"></div></div>
       <div class="card"><div class="card-head"><h2>Les 4 familles de critères</h2></div>
-        <p class="hint">Moyenne pondérée par la capitalisation, notes sur 100 relatives au secteur.</p><div id="sector-fams" class="chart chart-md"></div></div>
+        <p class="hint">Moyenne pondérée par la capitalisation. Notes sur 100 face à l'ensemble des entreprises analysées, pour comparer les secteurs entre eux.</p><div id="sector-fams" class="chart chart-md"></div></div>
     </section>
     <section class="card"><div class="card-head"><h2>Entreprises du secteur</h2></div><div id="table"></div></section>`;
   chart("sector-index").setOption({
@@ -299,6 +301,11 @@ function pageSector(app, id) {
   companyTable(document.getElementById("table"), { sector: id });
 }
 
+function familyGuide() {
+  const fams = S.companies?.families || [];
+  return `<section class="fam-guide">${fams.map((f, k) => `<div class="card fam-card"><div class="fam-name"><i style="background:${["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k]}"></i>${f.label} · ${f.weight} points</div><p>${esc(f.description || "")}</p></div>`).join("")}</section>`;
+}
+
 function kpi(label, value, cls = "", sub = "") { return `<div class="card kpi"><div class="label">${label}</div><div class="kpi-value ${cls}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`; }
 
 /* =====================================================================
@@ -311,7 +318,7 @@ function pageCompanies(app) {
   app.innerHTML = `<section class="card"><div class="card-head"><h2>Toutes les entreprises, classées par score</h2></div>
     <p class="hint">Chaque critère est noté par rapport aux entreprises du même secteur. Cochez des entreprises pour les comparer dans un pool.<br>
     <b>*</b> critère(s) manquant(s) remplacé(s) par une note neutre de 50 · <b>†</b> entreprise en perte (PER noté 0) · <b>n.d.</b> plus de 3 critères manquants : pas de score.</p>
-    <div id="table"></div></section>`;
+    <div id="table"></div></section>${familyGuide()}`;
   companyTable(document.getElementById("table"), {});
 }
 
@@ -500,6 +507,7 @@ async function pageCompany(app, ticker) {
         <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${m.label}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
         <td class="num">${x.status && x.status !== "ok" ? `<span class="status">${STATUS_LABEL[x.status] || x.status}</span>` : fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${x.status === "non applicable" || x.status === "fonds propres négatifs" ? "–" : scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
     </section>
+    ${familyGuide()}
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
         <p class="hint">Même sous-industrie en priorité, puis même secteur, taille comparable.</p>
@@ -534,7 +542,7 @@ async function pageCompany(app, ticker) {
     radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "62%", splitArea: { show: false } },
     series: [{ type: "radar", data: [
       { value: fams.map((f) => d.families[f.id] ?? 0), name: d.name, areaStyle: { color: "rgba(31,78,140,.2)" }, lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" }, label: { show: true, formatter: (p) => fmt(p.value, 0) } },
-      ...(sec ? [{ value: fams.map((f) => sec.families[f.id] ?? 0), name: "Moyenne du secteur", lineStyle: { color: "#c27c0e", type: "dashed" }, itemStyle: { color: "#c27c0e" } }] : []),
+      ...(sec ? [{ value: fams.map((f) => (sec.families_in_sector || sec.families)[f.id] ?? 0), name: "Moyenne du secteur", lineStyle: { color: "#c27c0e", type: "dashed" }, itemStyle: { color: "#c27c0e" } }] : []),
     ] }],
   });
 
@@ -810,10 +818,11 @@ function pageMacro(app) {
       <div class="table-wrap"><table class="table" id="ind-table"><thead><tr><th>Indicateur</th><th>Zone</th><th>Pilier</th><th class="num">Valeur</th>
         <th class="num">Score /100</th><th class="num">Poids réel</th><th>Source</th></tr></thead><tbody></tbody></table></div></section>
     <section class="card method"><h2>Méthode</h2>
-      <p>Chaque indicateur est ramené sur une échelle de 0 à 100 par la méthode Min-Max, sur son historique depuis 2005 (les 2 % de valeurs les plus extrêmes sont écrêtées).
+      <p>Chaque indicateur est ramené sur une échelle de 0 à 100 par la méthode Min-Max <b>en temps réel</b> : à chaque date, le minimum et le maximum ne sont calculés qu'avec les données déjà connues (les 2 % de valeurs les plus extrêmes sont écrêtées). Le score d'un mois passé est donc celui qu'on aurait obtenu à l'époque, sans connaître les crises à venir.
       Les indicateurs de risque (VIX, spreads, chômage, pétrole, incertitude) sont inversés ; l'inflation est notée selon son écart à la cible de 2 %.
       Les indicateurs sont moyennés par pilier, puis les piliers selon la grille 30 % croissance, 20 % inflation, 30 % marchés, 20 % risque.
-      Un score élevé signale une économie en bonne santé et un risque faible.</p></section>`;
+      Un score élevé signale une économie en bonne santé et un risque faible.</p>
+      <p><b>Comment s'en servir ?</b> Testé depuis 2005, le baromètre est surtout un <b>filtre de risque</b> : n'être investi en actions américaines que lorsque le score dépasse 45 aurait divisé par deux la pire baisse (environ −25 % contre −48 %) pour un rendement au moins équivalent. Le niveau du score ne prédit pas les hausses ; sa <b>tendance sur 3 mois</b> est le signal le plus utile.</p></section>`;
   document.getElementById("show-pillars").addEventListener("change", renderHistory);
   document.getElementById("show-z").addEventListener("change", renderHistory);
   renderGauge(); renderPillars(); renderHistory(); renderContrib(); renderTable();
@@ -832,7 +841,7 @@ function renderGauge() {
     detail: { valueAnimation: true, offsetCenter: [0, "38%"], fontSize: 38, fontWeight: 700, color: "#16202e", formatter: (v) => fmt(v) },
     data: [{ value: L.score }] }] });
   const sig = document.getElementById("signal");
-  sig.textContent = L.signal.label; sig.style.color = scoreColor(L.score);
+  sig.innerHTML = `${L.signal.label}<div class="trend ${L.trend?.tone || ""}">Tendance 3 mois : <b>${L.trend?.label || "–"}</b></div>`; sig.style.color = scoreColor(L.score);
   const d = (label, x) => `<span>${label} <b class="${pctCls(x)}">${signed(x)}</b></span>`;
   document.getElementById("deltas").innerHTML = d("1 mois", L.delta_1m) + d("3 mois", L.delta_3m) + d("12 mois", L.delta_12m);
 }

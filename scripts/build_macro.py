@@ -123,17 +123,27 @@ def winsorize(x: pd.Series, pct: float) -> pd.Series:
     return x.clip(lo, hi)
 
 
+BURN_IN = 24  # mois d'historique minimum avant de noter un indicateur
+
+
 def normalize(x: pd.Series, method: str, target: float | None, clip_pct: float) -> tuple[pd.Series, pd.Series]:
-    """Renvoie (score Min-Max 0-100, score Z 0-100). Haut = bonne santé."""
+    """Renvoie (score Min-Max 0-100, score Z 0-100). Haut = bonne santé.
+
+    Version « temps réel » : à chaque date, le minimum, le maximum (écrêtés aux centiles
+    clip_pct / 1 - clip_pct), la moyenne et l'écart-type ne sont calculés qu'avec les
+    données DÉJÀ CONNUES à cette date. Le score d'un mois passé est donc celui qu'on
+    aurait réellement obtenu à l'époque, sans connaître les crises à venir."""
     if method == "target":
         x = (x - target).abs()   # écart à la cible : plus petit = mieux
         inverse = True
     else:
         inverse = method == "minmax_inverse"
-    xw = winsorize(x, clip_pct)
-    lo, hi = xw.min(), xw.max()
-    mm = (xw - lo) / (hi - lo) * 100 if hi > lo else xw * 0 + 50
-    z = (x - x.mean()) / x.std()
+    ex = x.expanding(BURN_IN)
+    lo = ex.quantile(clip_pct) if clip_pct else ex.min()
+    hi = ex.quantile(1 - clip_pct) if clip_pct else ex.max()
+    span = (hi - lo).where(hi > lo)
+    mm = ((x.clip(lo, hi) - lo) / span * 100).where(span.notna(), 50.0).where(lo.notna())
+    z = (x - ex.mean()) / ex.std()
     if inverse:
         mm, z = 100 - mm, -z
     z_score = ((z.clip(-3, 3) + 3) / 6 * 100)
@@ -175,6 +185,17 @@ def effective_weights(latest_avail: dict, indicators: list, pillars: dict, zones
         for i in inds:
             out[i["id"]] = pillars[pid]["weight"] / total_pw * i["weight"] / tw * 100
     return out
+
+
+def trend(delta_3m: float | None) -> dict:
+    """La variation sur 3 mois : c'est le signal le plus utile d'après les tests sur le passé."""
+    if delta_3m is None or pd.isna(delta_3m):
+        return {"label": "–", "tone": "neutral"}
+    if delta_3m >= 3:
+        return {"label": "En amélioration", "tone": "good"}
+    if delta_3m <= -3:
+        return {"label": "En dégradation", "tone": "critical"}
+    return {"label": "Stable", "tone": "neutral"}
 
 
 def signal(score: float) -> dict:
@@ -225,9 +246,10 @@ def main(demo: bool = False) -> None:
         last_obs = s.index.max() if len(s) else None
         full = s.reindex(s.index.union(months)).sort_index().ffill(limit=FFILL_LIMIT).reindex(months)
         raw[ind["id"]] = full
-        window = full.dropna()
-        if len(window) >= 24:
-            a, b = normalize(window, ind["method"], ind.get("target"), clip_pct)
+        own = s.reindex(s.index.union(months)).sort_index().ffill(limit=FFILL_LIMIT)
+        own = own.loc[: months[-1]].dropna()   # tout l'historique disponible, depuis 2003
+        if len(own) >= BURN_IN:
+            a, b = normalize(own, ind["method"], ind.get("target"), clip_pct)
             mm[ind["id"]], zs[ind["id"]] = a.reindex(months), b.reindex(months)
         else:
             mm[ind["id"]] = zs[ind["id"]] = pd.Series(np.nan, index=months)
@@ -260,7 +282,7 @@ def main(demo: bool = False) -> None:
         views[view] = {
             "latest": {
                 "date": dates[-1], "score": r(now), "score_z": r(total_z.iloc[-1]),
-                "signal": signal(now),
+                "signal": signal(now), "trend": trend(delta(3)),
                 "delta_1m": delta(1), "delta_3m": delta(3), "delta_12m": delta(12),
                 "pillars": {p: r(ps[p].iloc[-1]) for p in ps},
                 "contributions": {iid: {"eff_weight": r(w, 2),
@@ -276,7 +298,7 @@ def main(demo: bool = False) -> None:
     out = {
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "demo": demo,
-        "method": {"normalisation": "Min-Max sur l'historique depuis " + cfg["start_date"][:4],
+        "method": {"normalisation": "Min-Max en temps réel : à chaque date, seules les données passées sont utilisées",
                    "winsorize": clip_pct},
         "zones": cfg["zones"],
         "pillars": [{"id": k, **v} for k, v in pillars.items()],

@@ -512,6 +512,21 @@ def main(demo: bool, rebuild_universe: bool) -> None:
         df[f"f_{fid}"] = fam_scores[fid]
     df["rank_sector"] = df.groupby("sector")["score"].rank(ascending=False, method="min")
 
+    # Score « univers » : mêmes critères et mêmes règles, mais chaque critère est noté par rapport
+    # à TOUTES les entreprises (et non à celles du secteur). Le score dans le secteur sert à choisir
+    # une entreprise ; le score univers sert à COMPARER LES SECTEURS entre eux (avec le score dans le
+    # secteur, la moyenne de chaque secteur vaut ~50 par construction et ne distingue rien).
+    uni = pd.DataFrame({mid: score_metric(df, mid, m["direction"], cfg["clip_percentile"], 10**9)
+                        for f in fams.values() for mid, m in f["metrics"].items() if mid in df})
+    uni[status == "manquant"] = neutral
+    uni[status == "perte"] = 0.0
+    uni[status.isin(["non applicable", "fonds propres négatifs"])] = np.nan
+    fam_uni = pd.DataFrame({fid: uni[[m for m in f["metrics"] if m in uni]].mean(axis=1) for fid, f in fams.items()})
+    df["score_univ"] = (fam_uni.fillna(0) * fw).sum(axis=1) / (fam_uni.notna() * fw).sum(axis=1)
+    df.loc[insufficient, "score_univ"] = np.nan
+    for fid in fams:
+        df[f"u_{fid}"] = fam_uni[fid]
+
     # --- secteurs ---
     macro = json.loads((SITE_DATA / "macro.json").read_text(encoding="utf-8")) if (SITE_DATA / "macro.json").exists() else None
     sc = cfg["sector_score"]
@@ -541,7 +556,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
                 return float((min(max(x.iloc[-1], lo), hi) - lo) / (hi - lo) * 100) if hi > lo else 50.0
 
             trend = np.nanmean([ts_score(gap), ts_score(mom)])
-            comp = weighted_mean(members["score"], members["cap_usd"])
+            comp = weighted_mean(members["score_univ"], members["cap_usd"])
             tilt = sc["macro_tilt"] * (macro_score - 50) * {"cyclique": 1, "defensif": -1}.get(s["type"], 0)
             score = float(np.clip(sc["company_weight"] * comp + sc["trend_weight"] * trend + tilt, 0, 100))
             ranked = members.dropna(subset=["score"]).sort_values("score", ascending=False)
@@ -560,7 +575,8 @@ def main(demo: bool, rebuild_universe: bool) -> None:
                 "perf_1m": perf(21), "perf_ytd": rnd((index.iloc[-1] / ytd.iloc[0] - 1) * 100, 1) if len(ytd) > 1 else None,
                 "perf_1y": perf(252),
                 "pe_median": rnd(members["pe"].median(), 1), "div_yield_avg": rnd(members["div_yield"].mean(), 2),
-                "families": {fid: rnd(weighted_mean(members[f"f_{fid}"], members["cap_usd"]), 1) for fid in fams},
+                "families": {fid: rnd(weighted_mean(members[f"u_{fid}"], members["cap_usd"]), 1) for fid in fams},
+                "families_in_sector": {fid: rnd(weighted_mean(members[f"f_{fid}"], members["cap_usd"]), 1) for fid in fams},
                 "top": brief(ranked.head(3)), "bottom": brief(ranked.tail(3).iloc[::-1]),
                 "industries": sorted(members["industry"].dropna().unique().tolist()),
                 "index": [rnd(x, 2) for x in index.resample("W-FRI").last().reindex(weekly_dates)],
@@ -586,7 +602,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     for old_file in COMPANY_DIR.glob("*.json"):
         old_file.unlink()
     updated = datetime.now(timezone.utc).isoformat(timespec="minutes")
-    family_meta = [{"id": fid, "label": f["label"], "weight": f["weight"],
+    family_meta = [{"id": fid, "label": f["label"], "weight": f["weight"], "description": f.get("description", ""),
                     "metrics": [{"id": mid, **m} for mid, m in f["metrics"].items()]} for fid, f in fams.items()]
     sector_avgs = df.groupby("sector")[[m for f in fams.values() for m in f["metrics"] if m in df]].median()
     list_rows = []
@@ -596,7 +612,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "t": t, "n": row["name"], "z": row["zone"], "c": COUNTRY_FR.get(row["country"], row["country"]),
             "s": row["sector"], "i": row["industry"], "cap": rnd(row["cap_usd"] / 1e9, 1),
             "sc": rnd(row["score"], 1), **{f"f_{fid}": rnd(row[f"f_{fid}"], 1) for fid in fams},
-            "miss": int(row["n_missing"]), "loss": bool(row["loss"]),
+            "miss": int(row["n_missing"]), "loss": bool(row["loss"]), "su": rnd(row["score_univ"], 1),
             "p1y": rnd(row.get("perf_1y"), 1), "pytd": rnd(row.get("perf_ytd"), 1), "pe": rnd(row.get("pe"), 1),
             "dy": rnd(row.get("div_yield"), 2), "rk": int(row["rank_sector"]) if pd.notna(row["rank_sector"]) else None,
         })
@@ -617,7 +633,8 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "score": rnd(row["score"], 1), "rank_sector": list_rows[-1]["rk"],
             "sector_size": int((df.sector == row["sector"]).sum()),
             "families": {fid: rnd(row[f"f_{fid}"], 1) for fid in fams},
-            "n_missing": int(row["n_missing"]), "loss": bool(row["loss"]),
+            "n_missing": int(row["n_missing"]), "loss": bool(row["loss"]), "score_univ": rnd(row["score_univ"], 1),
+            "families_univ": {fid: rnd(row[f"u_{fid}"], 1) for fid in fams},
             "metrics": {m: {"value": rnd(row.get(m)), "score": rnd(ms.loc[t, m], 1) if m in ms else None,
                             "status": status.loc[t, m] if m in status else "manquant",
                             "sector_median": rnd(sector_avgs.loc[row["sector"], m]) if m in sector_avgs else None}

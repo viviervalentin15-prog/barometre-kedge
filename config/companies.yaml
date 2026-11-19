@@ -26,6 +26,7 @@ min_sector_size: 8
 families:
   valorisation:
     label: "Valorisation"
+    description: "Le prix payé : PER, cours / valeur comptable, dividende. Une note haute signale une action moins chère que ses concurrentes. Non testable sur le passé : Yahoo ne fournit pas l'historique des ratios."
     weight: 25
     metrics:
       pe:          { label: "PER",                         direction: bas,  unit: "x" }
@@ -33,6 +34,7 @@ families:
       div_yield:   { label: "Rendement du dividende",      direction: haut, unit: "%" }
   dynamique:
     label: "Dynamique"
+    description: "La tendance du cours. C'est la famille la plus utile d'après nos tests 2023-2025 : les 20 % d'entreprises les mieux notées ont battu les 20 % les moins bien notées d'environ 7 points par an."
     weight: 25
     metrics:
       perf_12m_ex1m: { label: "Performance 12 mois (hors dernier mois)", direction: haut, unit: "%" }
@@ -40,6 +42,7 @@ families:
       ma200_gap:     { label: "Écart à la moyenne 200 jours",            direction: haut, unit: "%" }
   risque:
     label: "Risque"
+    description: "Un filtre défensif : volatilité, bêta, dette, pire baisse. Elle ne fait pas gagner plus (les titres les moins risqués ont moins progressé en 2023-2025, une période de forte hausse) mais réduit nettement les mauvaises surprises : 4 fois moins d'écarts de performance."
     weight: 25
     metrics:
       vol_1y:        { label: "Volatilité sur 1 an",         direction: bas,  unit: "%" }
@@ -48,6 +51,7 @@ families:
       max_dd_1y:     { label: "Pire baisse sur 1 an",        direction: haut, unit: "%" }
   qualite:
     label: "Qualité"
+    description: "La solidité de l'activité : rentabilité des fonds propres, marge, croissance du chiffre d'affaires. Non testable sur le passé faute d'historique des ratios."
     weight: 25
     metrics:
       roe:           { label: "Rentabilité des fonds propres (ROE)", direction: haut, unit: "%" }
@@ -66,6 +70,8 @@ missing_data:
     debt_equity: ["Financial Services"]
 
 # Score d'un secteur = part "entreprises" + part "tendance de marché",
+# La part "entreprises" utilise le score UNIVERS (critères notés face aux ~790 entreprises),
+# sinon chaque secteur aurait une moyenne de ~50 par construction.
 # puis ajustement selon le baromètre macro.
 sector_score:
   company_weight: 0.6     # moyenne des scores des entreprises, pondérée par la capitalisation

@@ -231,3 +231,11 @@ dialog#update-dialog h2 { margin-bottom: 8px; }
 dialog#update-dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; margin-top: 12px; }
 dialog#update-dialog input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+.trend { font-size: 13px; color: var(--muted); font-weight: 400; }
+.trend.good b { color: var(--good); } .trend.critical b { color: var(--critical); }
+.signal .trend { margin-top: 4px; text-align: center; }
+.fam-guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.fam-card p { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 6px 0 0; }
+.fam-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.fam-name i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
