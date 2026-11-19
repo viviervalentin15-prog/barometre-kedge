@@ -239,3 +239,13 @@ dialog#update-dialog input { font: inherit; padding: 8px 10px; border: 1px solid
 .fam-card p { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 6px 0 0; }
 .fam-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .fam-name i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---------- prévisions ---------- */
+.pred h3 { font-size: 14px; margin: 14px 0 6px; }
+.pred-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 10px; }
+.pred-card { display: flex; flex-direction: column; gap: 2px; }
+.pred-p { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pred-meta { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.pred-meta b { color: var(--ink); }
+.pred-detail { margin-top: 6px; }
+@media (max-width: 900px) { .pred-grid { grid-template-columns: 1fr; } }

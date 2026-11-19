@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import traceback
 import zlib
@@ -229,6 +230,41 @@ def demo_series(ind: dict) -> pd.Series:
 
 
 # ---------------------------------------------------------------------------
+# Prévision séparée du score : probabilité de récession aux États-Unis dans 12 mois
+# ---------------------------------------------------------------------------
+def recession_probability(demo: bool, raw_df: pd.DataFrame) -> dict | None:
+    """Modèle de la Fed de New York (Estrella et Mishkin) : probit sur l'écart de taux
+    10 ans - 3 mois, moyenne mensuelle. P = N(-0,5333 - 0,6330 x écart).
+    Les récessions officielles (NBER, série USREC) servent à juger le modèle sur le passé."""
+    try:
+        if demo:
+            spread = raw_df["slope_us"].dropna() + 0.3
+            rec = pd.Series(0, index=spread.index)
+        else:
+            spread = sources.fred("T10Y3M")
+            spread = spread.groupby(spread.index.to_period("M").to_timestamp()).mean()
+            rec = sources.fred("USREC")
+        prob = spread.map(lambda x: 0.5 * (1 + math.erf((-0.5333 - 0.6330 * x) / math.sqrt(2))))
+        prob = prob[prob.index >= pd.Timestamp("2005-01-01")]
+        rec = rec.reindex(prob.index).ffill()
+        # Le modèle donne une probabilité pour dans 12 mois : on la compare aux récessions 12 mois plus tard
+        rec_ahead = rec.shift(-12)
+        return {
+            "model": "Fed de New York (Estrella et Mishkin) : écart de taux 10 ans - 3 mois",
+            "dates": [f"{d:%Y-%m}" for d in prob.index],
+            "prob": [round(float(x) * 100, 1) for x in prob],
+            "recession": [int(x) if pd.notna(x) else None for x in rec],
+            "latest": {"date": f"{prob.index[-1]:%Y-%m}", "prob": round(float(prob.iloc[-1]) * 100, 1),
+                       "spread": round(float(spread.iloc[-1]), 2)},
+            "check": {"prob_moy_avant_recession": round(float(prob[rec_ahead == 1].mean()) * 100, 1) if (rec_ahead == 1).any() else None,
+                      "prob_moy_hors_recession": round(float(prob[rec_ahead == 0].mean()) * 100, 1) if (rec_ahead == 0).any() else None},
+        }
+    except Exception as e:  # noqa: BLE001
+        print("ECHEC probabilité de récession :", e)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # 4. Programme principal
 # ---------------------------------------------------------------------------
 def main(demo: bool = False) -> None:
@@ -315,6 +351,7 @@ def main(demo: bool = False) -> None:
         } for i in indicators],
         "log": log,
     }
+    out["recession"] = recession_probability(demo, raw_df)
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 

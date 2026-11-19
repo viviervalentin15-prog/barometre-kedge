@@ -184,6 +184,7 @@ function pageHome(app) {
         <div class="trend ${M.trend?.tone || ""}">Tendance 3 mois : <b>${M.trend?.label || "–"}</b> (${signed(M.delta_3m)})</div>
         <div class="deltas"><span>12 mois <b class="${pctCls(M.delta_12m)}">${signed(M.delta_12m)}</b></span><span>1 mois <b class="${pctCls(M.delta_1m)}">${signed(M.delta_1m)}</b></span></div>
         <div class="mini-pillars">${S.macro.pillars.map((p) => `<div><span>${p.label}</span><div class="bar"><span style="width:${M.pillars[p.id] ?? 0}%;background:${scoreColor(M.pillars[p.id])}"></span></div><b>${fmt(M.pillars[p.id], 0)}</b></div>`).join("")}</div>
+        ${S.macro.recession ? `<div class="trend">Probabilité de récession US à 12 mois : <b>${fmt(S.macro.recession.latest.prob, 0)} %</b></div>` : ""}
         <div class="more">Voir le baromètre détaillé →</div>
       </a>
       <div class="card reading">
@@ -453,6 +454,7 @@ function corr(a, b) {
 async function pageCompany(app, ticker) {
   app.innerHTML = '<div class="card">Chargement…</div>';
   const [d] = await loadDetails([ticker]);
+  await loadPredictions();
   if (!d) { app.innerHTML = '<div class="card">Entreprise introuvable. <a href="#/entreprises">Retour</a></div>'; return; }
   const fams = S.companies.families;
   const cur = d.currency === "EUR" ? "€" : d.currency === "USD" ? "$" : d.currency;
@@ -490,6 +492,7 @@ async function pageCompany(app, ticker) {
       ${kpi("Marge nette", fu(d.net_margin, 1, "%"))}
       ${kpi("Salariés", d.employees ? Number(d.employees).toLocaleString("fr-FR") : "–")}
     </section>
+    ${predictionSection(d.ticker)}
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Performance comparée</h2>${periodButtons("c-period", "1a")}</div>
         <p class="hint">Base 100 au début de la période : l'entreprise, son secteur et ${bench ? bench.name : "le marché"}.</p><div id="c-perf" class="chart chart-md"></div></div>
@@ -536,6 +539,7 @@ async function pageCompany(app, ticker) {
       xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, series }, true);
   };
   drawPerf("1a"); bindPeriod("c-period", drawPerf);
+  drawCone(d);
 
   // Radar entreprise vs secteur
   chart("c-fams").setOption({
@@ -642,6 +646,7 @@ async function pagePools(app) {
 
 async function poolReport(box, rows) {
   const details = await loadDetails(rows.map((c) => c.t));
+  await loadPredictions();
   const items = rows.map((c, k) => ({ c, d: details[k], nm: shortName(c.n), color: PALETTE[k % PALETTE.length] })).filter((x) => x.d);
   const fams = S.companies.families;
   const avg = (f) => { const v = items.map(f).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
@@ -688,6 +693,7 @@ async function poolReport(box, rows) {
     </section>
     <section class="card"><div class="card-head"><h2>Courbes superposées</h2>${periodButtons("p-period", "1a")}</div>
       <p class="hint">Base 100 au début de la période. Trait épais noir : le pool équipondéré. Pointillés : les indices de référence.</p><div id="p-perf" class="chart chart-lg"></div></section>
+    ${poolPredictionSection(items)}
     <section class="card"><div class="card-head"><h2>Comparaison des indicateurs</h2></div>
       <p class="hint">Couleur = note sur 100 du critère dans le secteur de l'entreprise ; ★ = meilleure note du pool sur la ligne.</p>
       <div class="table-wrap"><table class="table compare" id="p-table"></table></div></section>
@@ -734,6 +740,7 @@ async function poolReport(box, rows) {
       yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, dataZoom: [{ type: "inside" }], series }, true);
   };
   drawPerf("1a"); bindPeriod("p-period", drawPerf);
+  drawPoolMonteCarlo(items);
 
   // Tableau comparatif
   const cell = (val, score, best) => `<td class="num" style="background:${score == null ? "transparent" : scoreColor(score) + "22"}">${val}${best ? " ★" : ""}</td>`;
@@ -792,6 +799,156 @@ function diversificationText(poolVol, avgVol, avgCorr, items) {
 }
 
 /* =====================================================================
+   PRÉVISIONS (séparées du score) : data/predictions.json (scripts/build_predictions.py)
+   ===================================================================== */
+async function loadPredictions() {
+  if (S.pred === undefined) { try { S.pred = await getJSON("data/predictions.json"); } catch { S.pred = null; } }
+  return S.pred;
+}
+const probColor = (p) => (p == null ? "#8a8f98" : p >= 0.55 ? "#1f8a5b" : p >= 0.52 ? "#5fae7e" : p > 0.48 ? "#8a8f98" : p > 0.45 ? "#c27c0e" : "#c0392b");
+const pct = (x, d = 0) => (x == null ? "–" : fmt(x * 100, d) + " %");
+const spct = (x, d = 0) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x * 100, d) + " %");
+
+function predictionSection(t) {
+  const P = S.pred, c = P?.companies?.[t];
+  if (!c) return "";
+  const H = P.horizons;
+  const card = (h) => {
+    const x = c.h[h.id];
+    return `<div class="card pred-card">
+      <div class="label">Horizon ${h.label}</div>
+      <div class="pred-p" style="color:${probColor(x.p)}">${pct(x.p)}</div>
+      <div class="hint">de chances de faire mieux que son secteur</div>
+      <div class="pred-meta">
+        <span title="Part de bonnes prévisions des modèles sur le passé, testés hors échantillon">Note de prédictivité <b>${pct(x.fiabilite, 1)}</b></span>
+        <span title="Nombre de modèles qui voient l'entreprise faire mieux que son secteur">Modèles favorables <b>${x.favorables} / ${x.nb_modeles}</b></span>
+        ${x.cone ? `<span title="Fourchette dans laquelle le cours devrait se trouver 8 fois sur 10">Fourchette de cours <b>${spct(x.cone.q10)} à ${spct(x.cone.q90)}</b></span>` : ""}
+      </div></div>`;
+  };
+  const modelRows = P.models.map((m) => `<tr><td>${m.label}<div class="src">${m.type === "cours" ? "20 ans de cours" : "comptes annuels"}</div></td>
+    ${H.map((h) => { const x = c.h[h.id].models.find((y) => y.id === m.id) || {}; const w = P.weights[h.id][m.id];
+      return `<td class="num"><b style="color:${probColor(x.p)}">${pct(x.p)}</b><div class="src">fiabilité ${pct(x.acc, 1)}${x.oos === false ? "*" : ""}${w === 0 ? " · non retenu" : ""}</div></td>`; }).join("")}</tr>`).join("");
+  return `<section class="card pred">
+    <div class="card-head"><h2>Prévisions</h2><span class="pill">séparées du score</span></div>
+    <p class="hint">${P.question} dans 6 mois, 1 an et 3 ans. Chaque modèle a été testé sur le passé (${P.periode[0]} – ${P.periode[1]}) sans connaître la suite ; la <b>note de prédictivité</b> est sa part de bonnes prévisions. En finance, 53 à 56 % est déjà un bon résultat.</p>
+    <div class="pred-grid">${H.map(card).join("")}</div>
+    <div class="grid-2 pred-detail">
+      <div><h3>Détail des modèles</h3><div class="table-wrap"><table class="table"><thead><tr><th>Modèle</th>${H.map((h) => `<th class="num">${h.label}</th>`).join("")}</tr></thead><tbody>${modelRows}</tbody></table></div>
+        <p class="src">La synthèse pondère chaque modèle par son pouvoir prédictif mesuré ; un modèle sans pouvoir prédictif sur le passé n'est pas retenu. * mesure dans l'échantillon (trop peu de recul), donc optimiste et comptée pour moitié.</p></div>
+      <div><h3>Cône de cours</h3><div id="c-cone" class="chart chart-md"></div>
+        <p class="src">Volatilité EWMA (méthode RiskMetrics) et rendement historique du marché de la zone : une fourchette de risque, pas une prévision de direction.</p></div>
+    </div>
+    <p class="src">Limites : univers d'aujourd'hui (les entreprises sorties des indices manquent au test), capitalisations passées approchées par l'évolution du cours, 4-5 ans seulement de comptes annuels. Pas un conseil en investissement.</p>
+  </section>`;
+}
+
+function drawCone(d) {
+  const c = S.pred?.companies?.[d.ticker];
+  if (!c || !document.getElementById("c-cone")) return;
+  const dates = d.prices.dates.slice(-104), close = d.prices.close.slice(-104);
+  const last = close.at(-1), lastDate = new Date(dates.at(-1));
+  const fut = S.pred.horizons.map((h) => { const t = new Date(lastDate); t.setDate(t.getDate() + h.weeks * 7); return [t.toISOString().slice(0, 10), c.h[h.id].cone]; }).filter((x) => x[1]);
+  const pts = (q) => [[dates.at(-1), last], ...fut.map(([t, cn]) => [t, +(last * (1 + cn[q])).toFixed(2)])];
+  chart("c-cone").setOption({
+    grid: { left: 50, right: 16, top: 30, bottom: 30 }, legend: { top: 0 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 2) },
+    xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    series: [
+      { name: "Cours", type: "line", symbol: "none", data: dates.map((x, k) => [x, close[k]]), lineStyle: { color: "#1f4e8c", width: 2 }, itemStyle: { color: "#1f4e8c" } },
+      { name: "Haut (9 fois sur 10 en dessous)", type: "line", data: pts("q90"), lineStyle: { type: "dashed", color: "#5fae7e" }, itemStyle: { color: "#5fae7e" } },
+      { name: "Médiane", type: "line", data: pts("q50"), lineStyle: { type: "dashed", color: "#16202e" }, itemStyle: { color: "#16202e" } },
+      { name: "Bas (9 fois sur 10 au-dessus)", type: "line", data: pts("q10"), lineStyle: { type: "dashed", color: "#c0392b" }, itemStyle: { color: "#c0392b" } },
+    ],
+  });
+}
+
+/* Prévisions du pool : moyenne des synthèses + simulation de Monte-Carlo du pool équipondéré */
+function poolPredictionSection(items) {
+  const P = S.pred;
+  if (!P) return "";
+  const H = P.horizons;
+  const rows = items.map((x) => { const c = P.companies[x.c.t]; return `<tr><td><i class="dot" style="background:${x.color}"></i>${esc(x.nm)}</td>
+    ${H.map((h) => { const y = c?.h[h.id]; return `<td class="num"><b style="color:${probColor(y?.p)}">${pct(y?.p)}</b><div class="src">prédictivité ${pct(y?.fiabilite, 1)}</div></td>`; }).join("")}</tr>`; }).join("");
+  const avg = (h, k) => { const v = items.map((x) => P.companies[x.c.t]?.h[h]?.[k]).filter((v) => v != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  return `<section class="card pred">
+    <div class="card-head"><h2>Prévisions du pool</h2><span class="pill">séparées du score</span></div>
+    <p class="hint">${P.question}, entreprise par entreprise, et moyenne du pool. La note de prédictivité du pool est la moyenne des notes de ses entreprises.</p>
+    <div class="pred-grid">${H.map((h) => `<div class="card pred-card"><div class="label">Horizon ${h.label}</div>
+      <div class="pred-p" style="color:${probColor(avg(h.id, "p"))}">${pct(avg(h.id, "p"))}</div><div class="hint">de chances en moyenne de battre leur secteur</div>
+      <div class="pred-meta"><span>Note de prédictivité du pool <b>${pct(avg(h.id, "fiabilite"), 1)}</b></span><span id="mc-${h.id}"></span></div></div>`).join("")}</div>
+    <div class="grid-2 pred-detail">
+      <div><h3>Par entreprise</h3><div class="table-wrap"><table class="table"><thead><tr><th>Entreprise</th>${H.map((h) => `<th class="num">${h.label}</th>`).join("")}</tr></thead>
+        <tbody>${rows}</tbody></table></div></div>
+      <div><h3>Simulation de la valeur du pool</h3><div id="p-mc" class="chart chart-md"></div>
+        <p class="src">2 000 scénarios tirés des rendements hebdomadaires réels des 5 dernières années (tirage par blocs de 4 semaines pour garder les corrélations). Pool équipondéré, base 100.</p></div>
+    </div></section>`;
+}
+
+function drawPoolMonteCarlo(items) {
+  if (!document.getElementById("p-mc")) return;
+  const dates = S.sectors.index_dates;
+  const maps = items.map((x) => seriesByDate(x.d.prices.dates, x.d.prices.close));
+  const R = [];  // rendements hebdomadaires du pool équipondéré
+  for (let k = 1; k < dates.length; k++) {
+    const v = maps.map((m) => { const a = m.get(dates[k - 1]), b = m.get(dates[k]); return a && b ? b / a - 1 : null; }).filter((x) => x != null);
+    if (v.length >= Math.max(1, items.length / 2)) R.push(v.reduce((a, b) => a + b, 0) / v.length);
+  }
+  if (R.length < 60) return;
+  let seed = 12345; const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const W = 156, N = 2000, B = 4, paths = [];
+  for (let s = 0; s < N; s++) {
+    const p = [100]; let v = 100;
+    while (p.length <= W) { const start = Math.floor(rand() * (R.length - B)); for (let b = 0; b < B && p.length <= W; b++) { v *= 1 + R[start + b]; p.push(v); } }
+    paths.push(p);
+  }
+  const q = (arr, x) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(x * (s.length - 1))]; };
+  const weeks = [...Array(W + 1).keys()];
+  const band = (x) => weeks.map((w) => +q(paths.map((p) => p[w]), x).toFixed(1));
+  const p10 = band(0.1), p50 = band(0.5), p90 = band(0.9);
+  S.pred.horizons.forEach((h) => {
+    const end = paths.map((p) => p[h.weeks]);
+    const loss = end.filter((v) => v < 100).length / end.length;
+    const el = document.getElementById("mc-" + h.id);
+    if (el) el.innerHTML = `Simulation : médiane <b>${fmt(q(end, 0.5) - 100, 0)} %</b>, probabilité de perte <b>${fmt(loss * 100, 0)} %</b>`;
+  });
+  chart("p-mc").setOption({
+    grid: { left: 44, right: 16, top: 30, bottom: 30 }, legend: { top: 0 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 0) },
+    xAxis: { type: "category", data: weeks.map((w) => (w % 52 === 0 ? `${w / 52} an${w > 52 ? "s" : ""}` : w === 26 ? "6 mois" : "")), axisTick: { show: false }, axisLabel: { interval: 0 } },
+    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    series: [
+      { name: "Scénario favorable (9 sur 10 en dessous)", type: "line", symbol: "none", data: p90, lineStyle: { color: "#5fae7e" }, itemStyle: { color: "#5fae7e" } },
+      { name: "Médiane", type: "line", symbol: "none", data: p50, lineStyle: { color: "#16202e", width: 2.5 }, itemStyle: { color: "#16202e" } },
+      { name: "Scénario défavorable (9 sur 10 au-dessus)", type: "line", symbol: "none", data: p10, lineStyle: { color: "#c0392b" }, itemStyle: { color: "#c0392b" } },
+    ],
+  });
+}
+
+/* Baromètre : probabilité de récession (prévision séparée du score) */
+function recessionSection() {
+  const r = S.macro.recession;
+  if (!r) return "";
+  return `<section class="card pred"><div class="card-head"><h2>Probabilité de récession aux États-Unis dans 12 mois</h2><span class="pill">prévision séparée du score</span></div>
+    <div class="grid-2"><div>
+      <div class="pred-p" style="color:${r.latest.prob >= 30 ? "#c0392b" : r.latest.prob >= 15 ? "#c27c0e" : "#1f8a5b"}">${fmt(r.latest.prob, 0)} %</div>
+      <p class="hint">${r.model}. Écart actuel : ${fmt(r.latest.spread, 2)} point${Math.abs(r.latest.spread) >= 2 ? "s" : ""} (${monthLabel(r.latest.date)}). Une courbe des taux inversée (écart négatif) a précédé les récessions américaines récentes.</p>
+      ${r.check?.prob_moy_avant_recession != null ? `<p class="hint">Sur 2005-2026, la probabilité valait en moyenne <b>${fmt(r.check.prob_moy_avant_recession, 0)} %</b> 12 mois avant une récession, contre <b>${fmt(r.check.prob_moy_hors_recession, 0)} %</b> le reste du temps.</p>` : ""}
+    </div><div id="recession-chart" class="chart chart-sm"></div></div></section>`;
+}
+
+function drawRecession() {
+  const r = S.macro.recession;
+  if (!r || !document.getElementById("recession-chart")) return;
+  const areas = []; let start = null;
+  r.recession.forEach((v, k) => { if (v === 1 && start == null) start = r.dates[k]; if (v !== 1 && start != null) { areas.push([{ xAxis: start }, { xAxis: r.dates[k - 1] }]); start = null; } });
+  if (start) areas.push([{ xAxis: start }, { xAxis: r.dates.at(-1) }]);
+  chart("recession-chart").setOption({
+    grid: { left: 40, right: 16, top: 16, bottom: 30 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 0) + " %" },
+    xAxis: { type: "category", data: r.dates, axisLabel: { formatter: (v) => v.slice(0, 4) } }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    series: [{ type: "line", symbol: "none", data: r.prob, lineStyle: { color: "#c0392b", width: 2 }, itemStyle: { color: "#c0392b" },
+      markArea: { silent: true, itemStyle: { color: "rgba(22,32,46,.08)" }, data: areas } }],
+  });
+}
+
+/* =====================================================================
    BAROMÈTRE MACRO (page détaillée)
    ===================================================================== */
 function viewIndicators() {
@@ -809,6 +966,7 @@ function pageMacro(app) {
       <label class="check"><input type="checkbox" id="show-pillars"> Afficher les piliers</label>
       <label class="check"><input type="checkbox" id="show-z"> Comparer au Z-score</label></div>
       <div id="history" class="chart chart-lg"></div></section>
+    ${recessionSection()}
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Ce qui pèse dans le score aujourd'hui</h2></div>
         <p class="hint">Barre pleine : points apportés au score. Barre claire : poids maximal de l'indicateur.</p><div id="contrib" class="chart chart-contrib"></div></div>
@@ -830,6 +988,7 @@ function pageMacro(app) {
   const inds = viewIndicators();
   if (!S.selected || !inds.find((i) => i.id === S.selected)) S.selected = inds[0].id;
   renderDetail();
+  drawRecession();
 }
 
 /* « Comment s'en servir ? » : chiffres lus dans data/analyse.json (scripts/analyse_decision.py) */
