@@ -1,0 +1,193 @@
+# =====================================================================
+#  Réglages du baromètre macro
+#  ---------------------------------------------------------------
+#  Vous pouvez modifier les poids ici sans toucher au code.
+#  - weight  : coefficient de l'indicateur (le total n'a pas besoin
+#              de faire 100, le calcul ramène tout en proportion)
+#  - method  : "minmax"          -> haut = bon
+#              "minmax_inverse"  -> haut = mauvais (risque)
+#              "target"          -> on mesure l'écart à une cible,
+#                                   plus on est proche, mieux c'est
+#  - target  : la cible (uniquement pour method: target)
+# =====================================================================
+
+start_date: "2005-01-01"
+
+# Écrêtage des valeurs extrêmes avant le Min-Max : 0.02 = on ramène les 2 %
+# de mois les plus extrêmes de chaque côté au seuil (ex. le PIB de 2020).
+# Sans cela, un seul choc écrase toute l'échelle. Mettre 0 pour désactiver.
+winsorize: 0.02
+
+pillars:
+  croissance: { label: "Croissance",        weight: 30 }
+  inflation:  { label: "Inflation",         weight: 20 }
+  marches:    { label: "Marchés financiers", weight: 30 }
+  risque:     { label: "Risque",            weight: 20 }
+
+zones:
+  US:    "États-Unis"
+  EZ:    "Zone euro"
+  MONDE: "Monde"
+
+indicators:
+  # ---------------- CROISSANCE (30) ----------------
+  - id: cli_us
+    name: "Indicateur avancé OCDE (CLI)"
+    zone: US
+    pillar: croissance
+    weight: 6
+    method: minmax
+    unit: "points"
+    source: { type: oecd_cli, area: USA }
+
+  - id: cli_ez
+    name: "Indicateur avancé OCDE (CLI)"
+    zone: EZ
+    pillar: croissance
+    weight: 6
+    method: minmax
+    unit: "points"
+    source: { type: oecd_cli, area: EA20 }
+
+  - id: gdp_us
+    name: "PIB réel, variation sur 1 an"
+    zone: US
+    pillar: croissance
+    weight: 5
+    method: minmax
+    unit: "%"
+    source: { type: fred, series: GDPC1, transform: yoy }
+
+  - id: gdp_ez
+    name: "PIB réel, variation sur 1 an"
+    zone: EZ
+    pillar: croissance
+    weight: 5
+    method: minmax
+    unit: "%"
+    source: { type: eurostat_gdp }
+
+  - id: unemp_us
+    name: "Taux de chômage"
+    zone: US
+    pillar: croissance
+    weight: 4
+    method: minmax_inverse
+    unit: "%"
+    source: { type: fred, series: UNRATE }
+
+  - id: unemp_ez
+    name: "Taux de chômage"
+    zone: EZ
+    pillar: croissance
+    weight: 4
+    method: minmax_inverse
+    unit: "%"
+    source: { type: eurostat_unemployment }
+
+  # ---------------- INFLATION (20) ----------------
+  - id: cpi_us
+    name: "Inflation (CPI), écart à 2 %"
+    zone: US
+    pillar: inflation
+    weight: 7
+    method: target
+    target: 2.0
+    unit: "%"
+    source: { type: fred, series: CPIAUCSL, transform: yoy }
+
+  - id: hicp_ez
+    name: "Inflation (HICP), écart à 2 %"
+    zone: EZ
+    pillar: inflation
+    weight: 7
+    method: target
+    target: 2.0
+    unit: "%"
+    source: { type: ecb, key: "ICP/M.U2.N.000000.4.ANR" }
+
+  - id: breakeven_us
+    name: "Point mort d'inflation 10 ans, écart à 2 %"
+    zone: US
+    pillar: inflation
+    weight: 6
+    method: target
+    target: 2.0
+    unit: "%"
+    source: { type: fred, series: T10YIE }
+
+  # ---------------- MARCHÉS (30) ----------------
+  - id: equity_us
+    name: "S&P 500 : écart à la moyenne 200 jours"
+    zone: US
+    pillar: marches
+    weight: 10
+    method: minmax
+    unit: "%"
+    source: { type: yahoo_ma200, ticker: "^GSPC", fred_fallback: SP500 }
+
+  - id: equity_ez
+    name: "Euro Stoxx 50 : écart à la moyenne 200 jours"
+    zone: EZ
+    pillar: marches
+    weight: 10
+    method: minmax
+    unit: "%"
+    source: { type: yahoo_ma200, ticker: "^STOXX50E" }
+
+  - id: slope_us
+    name: "Pente de la courbe 10 ans – 2 ans"
+    zone: US
+    pillar: marches
+    weight: 5
+    method: minmax
+    unit: "pts de %"
+    source: { type: fred, series: T10Y2Y }
+
+  - id: slope_ez
+    name: "Pente de la courbe 10 ans – 2 ans"
+    zone: EZ
+    pillar: marches
+    weight: 5
+    method: minmax
+    unit: "pts de %"
+    source: { type: ecb_slope }
+
+  # ---------------- RISQUE (20) ----------------
+  - id: vix
+    name: "VIX (volatilité implicite)"
+    zone: MONDE
+    pillar: risque
+    weight: 7
+    method: minmax_inverse
+    unit: "points"
+    source: { type: fred, series: VIXCLS }
+
+  - id: credit_spread
+    name: "Spread de crédit High Yield"
+    zone: MONDE
+    pillar: risque
+    weight: 7
+    method: minmax_inverse
+    unit: "pts de %"
+    # Si l'historique High Yield de FRED est trop court, on bascule
+    # automatiquement sur le spread Baa (Moody's) - Treasury 10 ans.
+    source: { type: fred, series: BAMLH0A0HYM2, long_fallback: BAA10Y }
+
+  - id: brent
+    name: "Pétrole Brent"
+    zone: MONDE
+    pillar: risque
+    weight: 3
+    method: minmax_inverse
+    unit: "$ / baril"
+    source: { type: fred, series: DCOILBRENTEU }
+
+  - id: epu
+    name: "Incertitude politique mondiale (EPU)"
+    zone: MONDE
+    pillar: risque
+    weight: 3
+    method: minmax_inverse
+    unit: "indice"
+    source: { type: fred, series: GEPUCURRENT, fred_fallback: USEPUINDXM }

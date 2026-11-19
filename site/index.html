@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baromètre des marchés – KEDGE</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%231f4e8c%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/echarts.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Baromètre des marchés <span class="brand-sub">KEDGE · Gestion d'actifs</span></div>
+    <nav class="nav">
+      <a class="nav-link active" href="#">Baromètre</a>
+      <span class="nav-link soon" title="Étape 2">Secteurs</span>
+      <span class="nav-link soon" title="Étape 2">Entreprises</span>
+      <span class="nav-link soon" title="Étape 3">Pools</span>
+    </nav>
+  </header>
+
+  <main class="page">
+    <div id="demo-banner" class="banner" hidden>
+      Données simulées pour tester l'affichage : les vraies données arriveront après la première collecte.
+    </div>
+
+    <section class="toolbar">
+      <div class="segmented" id="zone-switch" role="group" aria-label="Zone">
+        <button data-view="commun" class="on">Commun US + zone euro</button>
+        <button data-view="US">États-Unis</button>
+        <button data-view="EZ">Zone euro</button>
+      </div>
+      <div class="updated" id="updated"></div>
+    </section>
+
+    <section class="hero">
+      <div class="card hero-score">
+        <div class="label">Score du baromètre</div>
+        <div id="gauge" class="gauge"></div>
+        <div class="signal" id="signal"></div>
+        <div class="deltas" id="deltas"></div>
+      </div>
+      <div class="pillars" id="pillars"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Historique du score</h2>
+        <label class="check"><input type="checkbox" id="show-pillars"> Afficher les piliers</label>
+        <label class="check"><input type="checkbox" id="show-z"> Comparer au Z-score</label>
+      </div>
+      <div id="history" class="chart chart-lg"></div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <div class="card-head"><h2>Ce qui pèse dans le score aujourd'hui</h2></div>
+        <p class="hint">Barre pleine : points apportés au score. Barre claire : poids maximal de l'indicateur.</p>
+        <div id="contrib" class="chart chart-contrib"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2 id="detail-title">Détail d'un indicateur</h2></div>
+        <p class="hint" id="detail-hint">Cliquez sur un indicateur dans le tableau ci-dessous.</p>
+        <div id="detail" class="chart chart-md"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Les indicateurs</h2></div>
+      <div class="table-wrap">
+        <table class="table" id="ind-table">
+          <thead>
+            <tr><th>Indicateur</th><th>Zone</th><th>Pilier</th><th class="num">Valeur</th>
+                <th class="num">Score /100</th><th class="num">Poids réel</th><th>Source</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card method">
+      <h2>Méthode</h2>
+      <p>Chaque indicateur est ramené sur une échelle de 0 à 100 par la méthode Min-Max, sur son historique
+        depuis 2005 (les 2 % de valeurs les plus extrêmes sont écrêtées). Les indicateurs de risque (VIX, spreads,
+        chômage, pétrole, incertitude) sont inversés ; l'inflation est notée selon son écart à la cible de 2 %.
+        Les indicateurs sont moyennés par pilier, puis les piliers selon la grille 30 % croissance, 20 % inflation,
+        30 % marchés, 20 % risque. Un score élevé signale une économie en bonne santé et un risque faible.</p>
+    </section>
+  </main>
+
+  <footer class="footer">Sources : FRED, OCDE, Eurostat, BCE, Yahoo Finance · Projet étudiant, pas un conseil en investissement.</footer>
+</body>
+</html>
