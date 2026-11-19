@@ -40,6 +40,7 @@ jobs:
         run: python scripts/build_companies.py
 
       - name: Calculer les prévisions (séparées du score)
+        continue-on-error: true   # un échec ici ne doit pas empêcher d'enregistrer le reste
         run: python scripts/build_predictions.py
 
       - name: Enregistrer les nouvelles données

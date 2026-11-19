@@ -218,7 +218,7 @@ def fundamental_features(stmts: dict, caps_now: pd.Series, P: pd.DataFrame, k: i
             "roe_stab": -np.std(roes) if len(roes) >= 3 else np.nan,
             "growth": (revs[-1] / revs[0]) ** (1 / (len(revs) - 1)) - 1 if len(revs) >= 3 and revs[0] > 0 else np.nan,
         }
-    return pd.DataFrame(rows).T
+    return pd.DataFrame.from_dict(rows, orient="index", dtype=float)
 
 
 def model_signals(pf: pd.DataFrame | None, ff: pd.DataFrame | None, sectors: pd.Series) -> pd.DataFrame:
