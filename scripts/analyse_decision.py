@@ -34,6 +34,12 @@ def r(x, n=2):
     return None if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))) else round(float(x), n)
 
 
+def spearman(a: pd.Series, b: pd.Series) -> float:
+    """Corrélation de rang (Spearman) sans dépendre de scipy."""
+    m = a.notna() & b.notna()
+    return a[m].rank().corr(b[m].rank())
+
+
 def perf_stats(monthly_ret: pd.Series) -> dict:
     m = monthly_ret.dropna()
     if m.empty:
@@ -117,8 +123,8 @@ def macro_tests(macro: dict) -> dict:
                 st["mois_investis_pct"] = r(invested.mean() * 100, 0)
                 strategies[f"investi_si_score_{th}"] = st
             res[name] = {
-                "correlation_score_perf12m": r(d12["score"].corr(d12["fwd12"], method="spearman")),
-                "correlation_variation3m_perf12m": r(d12["score"].diff(3).corr(d12["fwd12"], method="spearman")),
+                "correlation_score_perf12m": r(spearman(d12["score"], d12["fwd12"])),
+                "correlation_variation3m_perf12m": r(spearman(d12["score"].diff(3), d12["fwd12"])),
                 "par_niveau": [{"tranche": str(k), "mois": int(v.mois), "perf_12m": r(v.perf_12m * 100, 1),
                                 "pct_positif": r(v.pct_positif * 100, 0), "pire_baisse_12m": r(v.pire_baisse_12m * 100, 1)}
                                for k, v in table.iterrows()],
@@ -165,7 +171,7 @@ def company_tests() -> dict:
         for c in ("dynamique", "risque", "combine"):
             q = pd.qcut(f[c], 5, labels=False, duplicates="drop")
             g = f.groupby(q)
-            row[c] = {"ic": f[c].corr(f["fwd"], method="spearman"),
+            row[c] = {"ic": spearman(f[c], f["fwd"]),
                       "top_moins_bas": g["fwd"].mean().iloc[-1] - g["fwd"].mean().iloc[0],
                       "top_moins_bas_relatif": g["fwd_rel"].mean().iloc[-1] - g["fwd_rel"].mean().iloc[0],
                       "vol_top": f.loc[q == q.max(), "fwd"].std(), "vol_bas": f.loc[q == q.min(), "fwd"].std()}
@@ -199,12 +205,12 @@ def current_checks() -> dict:
     alt = s["company_score"]  # classement 100 % entreprises
     fam = df[[c for c in df if c.startswith("f_")]]
     return {
-        "correlation_score_potentiel_analystes": r(df["score"].corr(df["upside"], method="spearman")),
-        "correlation_score_perf_passee_1an": r(df["score"].corr(df["p1y"], method="spearman")),
+        "correlation_score_potentiel_analystes": r(spearman(df["score"], df["upside"])),
+        "correlation_score_perf_passee_1an": r(spearman(df["score"], df["p1y"])),
         "score_moyen_par_recommandation": {k: r(v, 1) for k, v in df.groupby("reco")["score"].mean().items()},
         "correlations_entre_familles": {f"{a}/{b}": r(fam[a].corr(fam[b]), 2) for i, a in enumerate(fam) for b in list(fam)[i + 1:]},
         "secteurs_poids_tendance": m["trend_weight"],
-        "secteurs_correlation_classement_avec_vs_sans_tendance": r(s["score"].corr(alt, method="spearman")),
+        "secteurs_correlation_classement_avec_vs_sans_tendance": r(spearman(s["score"], alt)),
         "secteurs_ecart_type_part_entreprises": r(s["company_score"].std(), 1),
         "secteurs_ecart_type_part_tendance": r(s["trend_score"].std(), 1),
     }
