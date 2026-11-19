@@ -19,6 +19,12 @@ function scoreColor(s) {
 }
 const fmt = (x, d = 1) => (x == null || Number.isNaN(x) ? "–" : Number(x).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const signed = (x, d = 1) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, d));
+/* nom court pour les graphiques et tableaux comparatifs */
+function shortName(n) {
+  let x = String(n || "").split(" - ")[0].replace(/,?\s*(Société Européenne|Société en commandite par actions|Société anonyme|S\.p\.A\.|S\.A\.|SA|SE|S\.E\.|N\.V\.|NV|AG|plc|PLC|Inc\.?|Corporation|Corp\.?|Company|Co\.|Ltd\.?|Holding(s)?|Group|Aktiengesellschaft|Oyj|ASA)(?=$|[\s,])/g, "").replace(/^The\s+/, "").replace(/\s{2,}/g, " ").trim();
+  x = x.replace(/[,\-–\s]+$/, "");
+  return x.length > 26 ? x.slice(0, 25).trim() + "…" : x || n;
+}
 /* valeur + unité, ou un simple tiret si la donnée manque */
 const fu = (x, d, unit) => (x == null || Number.isNaN(x) ? "–" : fmt(x, d) + (unit ? " " + unit : ""));
 const sp = (x, d = 1) => (x == null ? "–" : signed(x, d) + " %");
@@ -534,7 +540,7 @@ async function pagePools(app) {
         ${rows.length ? '<button class="btn ghost" id="pool-clear-2">Vider</button>' : ""}
         <button class="btn ghost" id="pool-print" ${rows.length >= 2 ? "" : "disabled"}>Imprimer le rapport</button>
       </div>
-      <div class="chips">${rows.map((c, k) => `<span class="chip"><i style="background:${PALETTE[k % PALETTE.length]}"></i>${esc(c.n)}<button data-t="${esc(c.t)}" title="Retirer">×</button></span>`).join("") || '<span class="hint">Aucune entreprise : cherchez-en une ci-dessus, ou cochez-en dans la <a href="#/entreprises">liste</a>.</span>'}</div>
+      <div class="chips">${rows.map((c, k) => `<span class="chip"><i style="background:${PALETTE[k % PALETTE.length]}"></i>${esc(shortName(c.n))}<button data-t="${esc(c.t)}" title="Retirer">×</button></span>`).join("") || '<span class="hint">Aucune entreprise : cherchez-en une ci-dessus, ou cochez-en dans la <a href="#/entreprises">liste</a>.</span>'}</div>
       ${Object.keys(saved).length ? `<div class="saved"><span class="hint">Pools enregistrés :</span> ${Object.entries(saved).map(([n, ts]) => `<span class="chip saved-chip"><a href="#" data-load="${esc(n)}">${esc(n)} (${ts.length})</a><button data-del="${esc(n)}" title="Supprimer">×</button></span>`).join("")}</div>` : ""}
     </section>
     <div id="pool-report">${rows.length >= 2 ? '<div class="card">Préparation du rapport…</div>' : rows.length === 1 ? '<div class="card hint">Ajoutez au moins une autre entreprise pour obtenir le rapport comparatif.</div>' : ""}</div>`;
@@ -565,7 +571,7 @@ async function pagePools(app) {
 
 async function poolReport(box, rows) {
   const details = await loadDetails(rows.map((c) => c.t));
-  const items = rows.map((c, k) => ({ c, d: details[k], color: PALETTE[k % PALETTE.length] })).filter((x) => x.d);
+  const items = rows.map((c, k) => ({ c, d: details[k], nm: shortName(c.n), color: PALETTE[k % PALETTE.length] })).filter((x) => x.d);
   const fams = S.companies.families;
   const avg = (f) => { const v = items.map(f).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const poolScore = avg((x) => x.c.sc);
@@ -595,7 +601,7 @@ async function poolReport(box, rows) {
       <div><div class="label">Rapport comparatif · ${items.length} entreprises · ${new Set(items.map((x) => x.c.s)).size} secteur(s)</div>
         <h1>Score du pool</h1>
         <div class="decomp"><span>Moyenne simple <b>${fmt(poolScore)}</b></span><span>Pondérée par la capitalisation <b>${fmt(poolScoreCap)}</b></span>
-          <span>Meilleure note <b>${esc(ranked[0].c.n)}</b></span></div></div>
+          <span>Meilleure note <b>${esc(ranked[0].nm)}</b></span></div></div>
       <div class="big-score" style="color:${scoreColor(poolScore)}">${fmt(poolScore)}<small>/100</small></div>
     </section>
     <section class="kpis">
@@ -627,7 +633,7 @@ async function poolReport(box, rows) {
     grid: { left: 170, right: 50, top: 30, bottom: 10 }, legend: { top: 0 },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => fmt(v) },
     xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
-    yAxis: { type: "category", data: rev.map((x) => x.c.n), axisLabel: { width: 160, overflow: "truncate" } },
+    yAxis: { type: "category", data: rev.map((x) => x.nm), axisLabel: { width: 160, overflow: "truncate" } },
     series: [...fams.map((f, k) => ({ name: f.label, type: "bar", stack: "s", barWidth: 16,
       itemStyle: { color: ["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k] },
       data: rev.map((x) => (x.c["f_" + f.id] != null ? +(x.c["f_" + f.id] * f.weight / 100).toFixed(1) : 0)) })),
@@ -638,7 +644,7 @@ async function poolReport(box, rows) {
   chart("p-radar").setOption({
     legend: { bottom: 0, type: "scroll" }, tooltip: {},
     radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "60%", splitArea: { show: false } },
-    series: [{ type: "radar", data: items.map((x) => ({ name: x.c.n, value: fams.map((f) => x.c["f_" + f.id] ?? 0), lineStyle: { color: x.color, width: 2 }, itemStyle: { color: x.color }, areaStyle: { color: x.color, opacity: 0.06 } })) }],
+    series: [{ type: "radar", data: items.map((x) => ({ name: x.nm, value: fams.map((f) => x.c["f_" + f.id] ?? 0), lineStyle: { color: x.color, width: 2 }, itemStyle: { color: x.color }, areaStyle: { color: x.color, opacity: 0.06 } })) }],
   });
 
   // Courbes superposées
@@ -649,7 +655,7 @@ async function poolReport(box, rows) {
     const allDates = S.sectors.index_dates.filter((dt) => dt >= st);
     const maps = curves.map((c) => new Map(c));
     const pool = allDates.map((dt) => { const v = maps.map((m) => m.get(dt)).filter((x) => x != null); return [dt, v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : null]; });
-    const series = items.map((x, k) => ({ name: x.c.n, type: "line", symbol: "none", lineStyle: { width: 1.5, color: x.color }, itemStyle: { color: x.color }, data: curves[k] }));
+    const series = items.map((x, k) => ({ name: x.nm, type: "line", symbol: "none", lineStyle: { width: 1.5, color: x.color }, itemStyle: { color: x.color }, data: curves[k] }));
     series.push({ name: "Pool équipondéré", type: "line", symbol: "none", lineStyle: { width: 3.5, color: "#16202e" }, itemStyle: { color: "#16202e" }, data: pool, z: 5 });
     zones.forEach((z) => { const b = S.sectors.benchmarks?.[z]; if (b) series.push({ name: b.name, type: "line", symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: "#8a8f98" }, itemStyle: { color: "#8a8f98" }, data: rebase(S.sectors.index_dates, b.values, st) }); });
     chart("p-perf").setOption({ grid: { left: 44, right: 16, top: 50, bottom: 30 }, legend: { top: 0, type: "scroll" },
@@ -661,12 +667,12 @@ async function poolReport(box, rows) {
   // Tableau comparatif
   const cell = (val, score, best) => `<td class="num" style="background:${score == null ? "transparent" : scoreColor(score) + "22"}">${val}${best ? " ★" : ""}</td>`;
   const bestIdx = (vals) => { let b = -1, bv = -Infinity; vals.forEach((v, k) => { if (v != null && v > bv) { bv = v; b = k; } }); return b; };
-  const head = `<thead><tr><th>Indicateur</th>${items.map((x) => `<th class="num"><i class="dot" style="background:${x.color}"></i><a href="#/entreprise/${encodeURIComponent(x.c.t)}">${esc(x.c.n)}</a></th>`).join("")}</tr></thead>`;
+  const head = `<thead><tr><th>Indicateur</th>${items.map((x) => `<th class="num"><i class="dot" style="background:${x.color}"></i><a href="#/entreprise/${encodeURIComponent(x.c.t)}">${esc(x.nm)}</a></th>`).join("")}</tr></thead>`;
   const line = (label, vals, scores, fmtv) => { const b = bestIdx(scores); return `<tr><td>${label}</td>${vals.map((v, k) => cell(fmtv(v), scores[k], k === b)).join("")}</tr>`; };
   const group = (label) => `<tr class="group"><td colspan="${items.length + 1}">${label}</td></tr>`;
   let body = group("Synthèse");
   body += line("<b>Score global</b>", items.map((x) => x.c.sc), items.map((x) => x.c.sc), (v) => `<b>${fmt(v)}</b>`);
-  body += `<tr><td>Secteur</td>${items.map((x) => `<td class="num muted">${esc(sectorLabel(x.c.s))}</td>`).join("")}</tr>`;
+  body += `<tr><td>Secteur</td>${items.map((x) => `<td class="num muted wrap">${esc(sectorLabel(x.c.s))}</td>`).join("")}</tr>`;
   body += `<tr><td>Rang dans le secteur</td>${items.map((x) => `<td class="num">${x.d.rank_sector ?? "–"} / ${x.d.sector_size}</td>`).join("")}</tr>`;
   body += `<tr><td>Capitalisation</td>${items.map((x) => `<td class="num">${capLabel(x.c.cap)}</td>`).join("")}</tr>`;
   body += line("Performance 1 an", items.map((x) => x.c.p1y), items.map((x) => x.c.p1y), (v) => `<span class="${pctCls(v)}">${sp(v)}</span>`);
@@ -684,7 +690,7 @@ async function poolReport(box, rows) {
   document.getElementById("p-table").innerHTML = head + `<tbody>${body}</tbody>`;
 
   // Corrélations
-  const names = items.map((x) => x.c.n);
+  const names = items.map((x) => x.nm);
   chart("p-corr").setOption({
     grid: { left: 150, right: 20, top: 10, bottom: 80 }, tooltip: { formatter: (p) => `${esc(names[p.data[1]])} / ${esc(names[p.data[0]])} : <b>${fmt(p.data[2], 2)}</b>` },
     xAxis: { type: "category", data: names, axisLabel: { rotate: 35, width: 110, overflow: "truncate", fontSize: 11 } },
@@ -699,7 +705,7 @@ async function poolReport(box, rows) {
     tooltip: { formatter: (p) => `${esc(p.data[2])}<br>Volatilité ${fmt(p.data[0])} % · perf. ${signed(p.data[1])} %` },
     xAxis: { type: "value", name: "Volatilité 1 an (%)", nameLocation: "middle", nameGap: 26, scale: true, splitLine: { show: false } },
     yAxis: { type: "value", name: "Perf. 1 an (%)", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
-    series: [{ type: "scatter", symbolSize: 11, data: items.map((x, k) => ({ value: [vols[k], x.c.p1y, x.c.n], itemStyle: { color: x.color } })) },
+    series: [{ type: "scatter", symbolSize: 11, data: items.map((x, k) => ({ value: [vols[k], x.c.p1y, x.nm], itemStyle: { color: x.color } })) },
       { type: "scatter", symbol: "diamond", symbolSize: 18, itemStyle: { color: "#16202e" }, data: [[poolVol, perf1y, "Pool équipondéré"]], label: { show: true, position: "right", formatter: "Pool" } }],
   });
 }

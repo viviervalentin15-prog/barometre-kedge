@@ -213,3 +213,7 @@ td.name { min-width: 190px; }
   .grid-2 { grid-template-columns: 1fr 1fr; }
 }
 .table.compare th { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); }
+.table.compare td.wrap { white-space: normal; font-size: 12px; }
+.table.compare td { min-width: 120px; }
+.table.compare th:first-child, .table.compare td:first-child { position: sticky; left: 0; background: #fff; z-index: 1; min-width: 230px; }
+.table.compare tr.group td { position: static; }
