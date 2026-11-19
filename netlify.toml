@@ -1,0 +1,10 @@
+# Réglages Netlify : le site est déjà prêt dans le dossier "site",
+# il n'y a rien à compiler.
+[build]
+  publish = "site"
+  command = ""
+
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "no-cache"
