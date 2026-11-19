@@ -1,7 +1,8 @@
 """Diagnostic temporaire : où est publiée l'inflation HICP de la zone euro depuis 2026 ?"""
 import io, requests, pandas as pd
 out = []
-def log(*a): out.append(" ".join(str(x) for x in a))
+def log(*a):
+    out.append(" ".join(str(x) for x in a)); print(out[-1], flush=True)
 H = {"User-Agent": "barometre-kedge"}
 # 1. Catalogue Eurostat : jeux de données dont le code contient "hicp"
 r = requests.get("https://ec.europa.eu/eurostat/api/dissemination/catalogue/toc/txt", params={"lang": "en"}, headers=H, timeout=120)
@@ -23,8 +24,8 @@ except Exception as e:
 # 3. BCE ICP : séries zone euro avec des données en 2026
 for key in ["ICP/M.U2.N..4.ANR", "ICP/M.U2.Y..4.ANR", "ICP/M.U2...4.ANR", "ICP/M.I9...4.ANR", "ICP/M.U3...4.ANR"]:
     r = requests.get(f"https://data-api.ecb.europa.eu/service/data/{key}", params={"format": "csvdata", "startPeriod": "2026-01"}, headers=H, timeout=120)
-    log("== BCE", key, r.status_code)
-    if r.status_code == 200:
+    log("== BCE", key, r.status_code, len(r.text))
+    if r.status_code == 200 and r.text.strip():
         d = pd.read_csv(io.StringIO(r.text))
         g = d.groupby("KEY")["TIME_PERIOD"].max()
         log("  séries:", len(g)); log(g.head(15).to_string())
@@ -37,4 +38,4 @@ for ds, f in [("prc_hicp_fp", {"geo": "EA"}), ("prc_hicp_manr", {"geo": "EA"})]:
         for dd in j.get("id", []): log("   ", dd, list(j["dimension"][dd]["category"]["index"].keys())[:10])
     except Exception as e:
         log("  erreur", r.text[:200])
-open("data/diagnostic.txt", "w").write("\n".join(out)); print("\n".join(out))
+open("data/diagnostic.txt", "w").write("\n".join(out))
