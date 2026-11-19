@@ -32,16 +32,16 @@
  },
  "controles": {
   "correlation_score_potentiel_analystes": -0.49,
-  "correlation_score_perf_passee_1an": 0.4,
+  "correlation_score_perf_passee_1an": 0.39,
   "score_moyen_par_recommandation": {
-   "buy": 52.3,
-   "hold": 53.5,
-   "none": 51.7,
+   "buy": 52.2,
+   "hold": 53.3,
+   "none": 51.8,
    "strong_buy": 48.5,
-   "underperform": 56.1
+   "underperform": 55.9
   },
   "correlations_entre_familles": {
-   "f_valorisation/f_dynamique": -0.13,
+   "f_valorisation/f_dynamique": -0.14,
    "f_valorisation/f_risque": 0.24,
    "f_valorisation/f_qualite": -0.24,
    "f_dynamique/f_risque": 0.38,
@@ -49,43 +49,43 @@
    "f_risque/f_qualite": -0.06
   },
   "secteurs_poids_tendance": 0.4,
-  "secteurs_correlation_classement_avec_vs_sans_tendance": -0.17,
-  "secteurs_ecart_type_part_entreprises": 2.6,
-  "secteurs_ecart_type_part_tendance": 24.9
+  "secteurs_correlation_classement_avec_vs_sans_tendance": 0.55,
+  "secteurs_ecart_type_part_entreprises": 5.7,
+  "secteurs_ecart_type_part_tendance": 24.8
  },
  "macro": {
   "commun": {
    "site": {
-    "correlation_score_perf12m": -0.42,
-    "correlation_variation3m_perf12m": 0.11,
+    "correlation_score_perf12m": -0.18,
+    "correlation_variation3m_perf12m": 0.18,
     "par_niveau": [
      {
       "tranche": "< 45",
-      "mois": 14,
-      "perf_12m": 28.8,
-      "pct_positif": 100.0,
-      "pire_baisse_12m": -5.7
+      "mois": 28,
+      "perf_12m": 3.5,
+      "pct_positif": 61.0,
+      "pire_baisse_12m": -19.9
      },
      {
       "tranche": "45-55",
-      "mois": 17,
-      "perf_12m": 7.6,
-      "pct_positif": 76.0,
-      "pire_baisse_12m": -14.1
+      "mois": 35,
+      "perf_12m": 9.5,
+      "pct_positif": 89.0,
+      "pire_baisse_12m": -5.4
      },
      {
       "tranche": "55-65",
-      "mois": 50,
-      "perf_12m": 8.8,
-      "pct_positif": 78.0,
-      "pire_baisse_12m": -7.6
+      "mois": 67,
+      "perf_12m": 10.2,
+      "pct_positif": 79.0,
+      "pire_baisse_12m": -5.3
      },
      {
       "tranche": "> 65",
-      "mois": 170,
-      "perf_12m": 4.8,
+      "mois": 121,
+      "perf_12m": 5.5,
       "pct_positif": 71.0,
-      "pire_baisse_12m": -6.9
+      "pire_baisse_12m": -6.5
      }
     ],
     "strategies": {
@@ -97,25 +97,25 @@
       "mois_investis_pct": null
      },
      "investi_si_score_45": {
-      "rendement_annuel": 4.4,
-      "volatilite": 13.8,
-      "pire_baisse": -39.8,
-      "ratio_rendement_risque": 0.32,
-      "mois_investis_pct": 95.0
+      "rendement_annuel": 6.4,
+      "volatilite": 12.7,
+      "pire_baisse": -29.5,
+      "ratio_rendement_risque": 0.51,
+      "mois_investis_pct": 89.0
      },
      "investi_si_score_50": {
-      "rendement_annuel": 5.2,
-      "volatilite": 12.8,
-      "pire_baisse": -29.1,
-      "ratio_rendement_risque": 0.41,
-      "mois_investis_pct": 92.0
+      "rendement_annuel": 6.2,
+      "volatilite": 11.4,
+      "pire_baisse": -25.1,
+      "ratio_rendement_risque": 0.54,
+      "mois_investis_pct": 83.0
      },
      "investi_si_score_55": {
-      "rendement_annuel": 5.1,
-      "volatilite": 11.8,
-      "pire_baisse": -29.1,
-      "ratio_rendement_risque": 0.43,
-      "mois_investis_pct": 88.0
+      "rendement_annuel": 5.2,
+      "volatilite": 10.8,
+      "pire_baisse": -22.8,
+      "ratio_rendement_risque": 0.48,
+      "mois_investis_pct": 76.0
      }
     }
    },
@@ -186,36 +186,36 @@
   },
   "US": {
    "site": {
-    "correlation_score_perf12m": -0.34,
-    "correlation_variation3m_perf12m": 0.14,
+    "correlation_score_perf12m": -0.07,
+    "correlation_variation3m_perf12m": 0.18,
     "par_niveau": [
      {
       "tranche": "< 45",
-      "mois": 14,
-      "perf_12m": 31.8,
-      "pct_positif": 100.0,
-      "pire_baisse_12m": -5.5
+      "mois": 28,
+      "perf_12m": 4.5,
+      "pct_positif": 61.0,
+      "pire_baisse_12m": -19.5
      },
      {
       "tranche": "45-55",
-      "mois": 16,
-      "perf_12m": 6.5,
-      "pct_positif": 75.0,
-      "pire_baisse_12m": -12.8
+      "mois": 26,
+      "perf_12m": 6.4,
+      "pct_positif": 81.0,
+      "pire_baisse_12m": -6.6
      },
      {
       "tranche": "55-65",
-      "mois": 43,
-      "perf_12m": 11.0,
-      "pct_positif": 81.0,
-      "pire_baisse_12m": -8.4
+      "mois": 50,
+      "perf_12m": 13.8,
+      "pct_positif": 84.0,
+      "pire_baisse_12m": -3.5
      },
      {
       "tranche": "> 65",
-      "mois": 178,
-      "perf_12m": 8.6,
-      "pct_positif": 80.0,
-      "pire_baisse_12m": -5.6
+      "mois": 147,
+      "perf_12m": 10.7,
+      "pct_positif": 84.0,
+      "pire_baisse_12m": -5.1
      }
     ],
     "strategies": {
@@ -227,25 +227,25 @@
       "mois_investis_pct": null
      },
      "investi_si_score_45": {
-      "rendement_annuel": 7.0,
-      "volatilite": 13.6,
-      "pire_baisse": -37.5,
-      "ratio_rendement_risque": 0.52,
-      "mois_investis_pct": 95.0
+      "rendement_annuel": 8.9,
+      "volatilite": 12.6,
+      "pire_baisse": -31.6,
+      "ratio_rendement_risque": 0.71,
+      "mois_investis_pct": 89.0
      },
      "investi_si_score_50": {
-      "rendement_annuel": 7.6,
-      "volatilite": 12.3,
+      "rendement_annuel": 8.3,
+      "volatilite": 11.7,
       "pire_baisse": -25.3,
-      "ratio_rendement_risque": 0.62,
-      "mois_investis_pct": 91.0
+      "ratio_rendement_risque": 0.71,
+      "mois_investis_pct": 84.0
      },
      "investi_si_score_55": {
-      "rendement_annuel": 8.2,
-      "volatilite": 11.9,
+      "rendement_annuel": 8.3,
+      "volatilite": 11.3,
       "pire_baisse": -25.3,
-      "ratio_rendement_risque": 0.69,
-      "mois_investis_pct": 89.0
+      "ratio_rendement_risque": 0.73,
+      "mois_investis_pct": 79.0
      }
     }
    },
@@ -316,36 +316,36 @@
   },
   "EZ": {
    "site": {
-    "correlation_score_perf12m": -0.45,
-    "correlation_variation3m_perf12m": -0.0,
+    "correlation_score_perf12m": -0.19,
+    "correlation_variation3m_perf12m": 0.1,
     "par_niveau": [
      {
       "tranche": "< 45",
-      "mois": 15,
-      "perf_12m": 23.7,
-      "pct_positif": 93.0,
-      "pire_baisse_12m": -8.1
+      "mois": 32,
+      "perf_12m": 1.3,
+      "pct_positif": 59.0,
+      "pire_baisse_12m": -18.9
      },
      {
       "tranche": "45-55",
-      "mois": 19,
-      "perf_12m": 11.7,
-      "pct_positif": 84.0,
-      "pire_baisse_12m": -11.6
+      "mois": 44,
+      "perf_12m": 7.4,
+      "pct_positif": 75.0,
+      "pire_baisse_12m": -7.8
      },
      {
       "tranche": "55-65",
-      "mois": 57,
-      "perf_12m": 6.8,
-      "pct_positif": 79.0,
-      "pire_baisse_12m": -8.6
+      "mois": 71,
+      "perf_12m": 5.1,
+      "pct_positif": 68.0,
+      "pire_baisse_12m": -8.9
      },
      {
       "tranche": "> 65",
-      "mois": 134,
-      "perf_12m": -1.5,
-      "pct_positif": 48.0,
-      "pire_baisse_12m": -10.7
+      "mois": 78,
+      "perf_12m": 0.5,
+      "pct_positif": 50.0,
+      "pire_baisse_12m": -8.9
      }
     ],
     "strategies": {
@@ -357,25 +357,25 @@
       "mois_investis_pct": null
      },
      "investi_si_score_45": {
-      "rendement_annuel": 1.3,
-      "volatilite": 15.7,
-      "pire_baisse": -41.8,
+      "rendement_annuel": 1.2,
+      "volatilite": 14.3,
+      "pire_baisse": -38.0,
       "ratio_rendement_risque": 0.08,
-      "mois_investis_pct": 94.0
+      "mois_investis_pct": 88.0
      },
      "investi_si_score_50": {
-      "rendement_annuel": 0.8,
-      "volatilite": 14.8,
-      "pire_baisse": -40.6,
+      "rendement_annuel": 0.6,
+      "volatilite": 13.0,
+      "pire_baisse": -36.5,
       "ratio_rendement_risque": 0.05,
-      "mois_investis_pct": 92.0
+      "mois_investis_pct": 79.0
      },
      "investi_si_score_55": {
-      "rendement_annuel": 1.0,
-      "volatilite": 14.1,
-      "pire_baisse": -45.5,
-      "ratio_rendement_risque": 0.07,
-      "mois_investis_pct": 87.0
+      "rendement_annuel": 1.8,
+      "volatilite": 12.2,
+      "pire_baisse": -33.0,
+      "ratio_rendement_risque": 0.14,
+      "mois_investis_pct": 71.0
      }
     }
    },
