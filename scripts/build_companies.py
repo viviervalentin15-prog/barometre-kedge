@@ -41,9 +41,9 @@ SITE_DATA = ROOT / "site" / "data"
 COMPANY_DIR = SITE_DATA / "companies"
 
 UA = {"User-Agent": "Mozilla/5.0 (barometre-kedge, projet etudiant KEDGE)"}
+# Les 11 pays couverts par l'indice Euro Stoxx (définition STOXX)
 EZ_COUNTRIES = {"France", "Germany", "Netherlands", "Italy", "Spain", "Belgium", "Finland", "Portugal",
-                "Ireland", "Austria", "Luxembourg", "Greece", "Slovakia", "Slovenia", "Estonia", "Latvia",
-                "Lithuania", "Croatia", "Malta", "Cyprus", "Bulgaria"}
+                "Ireland", "Austria", "Luxembourg"}
 # Suffixes Yahoo des bourses de la zone euro, par ordre de préférence
 EZ_SUFFIXES = [".PA", ".AS", ".DE", ".MI", ".MC", ".BR", ".HE", ".IR", ".LS", ".VI", ".AT"]
 HOME_SUFFIX = {"France": ".PA", "Netherlands": ".AS", "Germany": ".DE", "Italy": ".MI", "Spain": ".MC",
@@ -53,7 +53,8 @@ EZ_EXCHANGES = ["PAR", "AMS", "GER", "MIL", "MCE", "BRU", "HEL", "ISE", "LIS", "
 COUNTRY_FR = {"United States": "États-Unis", "France": "France", "Germany": "Allemagne", "Netherlands": "Pays-Bas",
               "Italy": "Italie", "Spain": "Espagne", "Belgium": "Belgique", "Finland": "Finlande",
               "Portugal": "Portugal", "Ireland": "Irlande", "Austria": "Autriche", "Luxembourg": "Luxembourg",
-              "Greece": "Grèce", "Switzerland": "Suisse", "United Kingdom": "Royaume-Uni"}
+              "Greece": "Grèce", "Switzerland": "Suisse", "United Kingdom": "Royaume-Uni", "Slovenia": "Slovénie",
+              "Bermuda": "Bermudes", "Jersey": "Jersey", "Canada": "Canada", "Israel": "Israël"}
 INFO_FIELDS = ["shortName", "longName", "sector", "industry", "country", "currency", "marketCap", "trailingPE",
                "forwardPE", "priceToBook", "dividendYield", "returnOnEquity", "operatingMargins", "revenueGrowth",
                "debtToEquity", "beta", "exchange", "website", "fullTimeEmployees", "profitMargins",
@@ -130,7 +131,16 @@ def screen_eurozone(min_cap: float) -> list[str]:
 def norm_name(info: dict) -> str:
     name = (info.get("longName") or info.get("shortName") or "").lower()
     name = re.sub(r"\b(se|sa|nv|ag|spa|s\.p\.a|plc|n\.v|s\.a|oyj|ab|asa|inc|group|holding|holdings)\b", "", name)
-    return re.sub(r"[^a-z0-9]", "", name)[:14]
+    return re.sub(r"[^a-z0-9]", "", name)
+
+
+def display_name(i: dict, ticker: str) -> str:
+    """Nom lisible : le nom complet si Yahoo le donne, sinon le nom court sans les codes de fin."""
+    name = (i.get("longName") or "").strip()
+    if not name:
+        name = re.sub(r"\s+[A-Za-z]{1,2}$", "", (i.get("shortName") or ticker).strip())
+        name = re.sub(r"\s{2,}", " ", name)
+    return name
 
 
 def build_eurostoxx(cfg: dict, infos: dict) -> pd.DataFrame:
@@ -419,10 +429,17 @@ def main(demo: bool, rebuild_universe: bool) -> None:
         m = {**info_metrics(i), **(price_metrics(prices[t]) if t in prices else {})}
         cap = i.get("marketCap") or np.nan
         cap_usd = cap * (fx if i.get("currency") == "EUR" else 1) if i.get("currency") in ("EUR", "USD") else np.nan
-        rows.append({"ticker": t, "zone": u["zone"], "name": (i.get("shortName") or i.get("longName") or t).strip(),
+        rows.append({"ticker": t, "zone": u["zone"], "name": display_name(i, t),
                      "sector": i["sector"], "industry": i.get("industry") or "", "country": i.get("country") or "",
                      "currency": i.get("currency") or "", "cap": cap, "cap_usd": cap_usd, **m})
-    df = pd.DataFrame(rows).set_index("ticker")
+    df = pd.DataFrame(rows)
+    # Une seule ligne par entreprise : classes d'actions multiples (GOOGL/GOOG) et entreprises
+    # présentes à la fois dans le S&P 500 et en zone euro (ex. CRH) -> on garde la plus grande / la cotation US
+    df["key"] = [norm_name(infos.get(t) or {}) or t for t in df["ticker"]]
+    before = len(df)
+    df = df.sort_values(["zone", "cap_usd"], ascending=[False, False]).drop_duplicates("key").drop(columns="key")
+    log(f"Doublons retirés : {before - len(df)}")
+    df = df.set_index("ticker")
     log(f"{len(df)} entreprises notables ({(df.zone == 'US').sum()} US, {(df.zone == 'EZ').sum()} zone euro)")
 
     # --- notation ---
