@@ -38,7 +38,7 @@ function companyScore(c) {
   const notes = [c.miss ? `${c.miss} critère${c.miss > 1 ? "s" : ""} manquant${c.miss > 1 ? "s" : ""} : note neutre de 50 appliquée` : "", c.loss ? "entreprise en perte : PER noté 0" : ""].filter(Boolean).join(" · ");
   return scorePill(c.sc) + (notes ? `<sup class="flag" title="${notes}">${c.miss ? "*" : "†"}</sup>` : "");
 }
-const STATUS_LABEL = { manquant: "manquant → 50", perte: "en perte → 0", "non applicable": "non applicable" };
+const STATUS_LABEL = { manquant: "manquant → 50", perte: "en perte → 0", "non applicable": "non applicable", "fonds propres négatifs": "fonds propres négatifs" };
 const capLabel = (bn) => (bn == null ? "–" : bn >= 1000 ? fmt(bn / 1000, 2) + " T$" : fmt(bn, bn >= 100 ? 0 : 1) + " Md$");
 function monthLabel(ym) {
   const [y, m] = ym.split("-").map(Number);
@@ -498,7 +498,7 @@ async function pageCompany(app, ticker) {
       <div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critère</th><th class="num">Valeur</th><th class="num">Médiane du secteur</th><th class="num">Note /100</th></tr></thead>
       <tbody>${fams.map((f) => f.metrics.map((m, k) => { const x = d.metrics[m.id] || {}; return `<tr>
         <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${m.label}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
-        <td class="num">${x.status && x.status !== "ok" ? `<span class="status">${STATUS_LABEL[x.status] || x.status}</span>` : fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${x.status === "non applicable" ? "–" : scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
+        <td class="num">${x.status && x.status !== "ok" ? `<span class="status">${STATUS_LABEL[x.status] || x.status}</span>` : fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${x.status === "non applicable" || x.status === "fonds propres négatifs" ? "–" : scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
     </section>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>

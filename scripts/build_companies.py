@@ -58,7 +58,7 @@ COUNTRY_FR = {"United States": "États-Unis", "France": "France", "Germany": "Al
 INFO_FIELDS = ["shortName", "longName", "sector", "industry", "country", "currency", "marketCap", "trailingPE",
                "forwardPE", "priceToBook", "dividendYield", "returnOnEquity", "operatingMargins", "revenueGrowth",
                "debtToEquity", "beta", "exchange", "website", "fullTimeEmployees", "profitMargins",
-               "enterpriseToEbitda", "currentPrice", "targetMeanPrice", "recommendationKey", "longBusinessSummary"]
+               "enterpriseToEbitda", "currentPrice", "bookValue", "targetMeanPrice", "recommendationKey", "longBusinessSummary"]
 VIEWS = {"commun": ("US", "EZ"), "US": ("US",), "EZ": ("EZ",)}
 
 
@@ -210,7 +210,8 @@ def fetch_infos(tickers: list[str], infos: dict, max_age_days: float = 5) -> Non
     de max_age_days jours n'est pas redemandée (moins de requêtes, moins de blocages)."""
     import yfinance as yf
     now = time.time()
-    todo = [t for t in tickers if now - (infos.get(t) or {}).get("_fetched", 0) > max_age_days * 86400]
+    todo = [t for t in tickers if now - (infos.get(t) or {}).get("_fetched", 0) > max_age_days * 86400
+            or (infos.get(t) and "bookValue" not in infos[t])]  # champ ajouté après coup : on relit
     log(f"Ratios : {len(todo)} entreprises à interroger ({len(tickers) - len(todo)} déjà en cache)")
     failures = 0
     for k, t in enumerate(todo, 1):
@@ -474,6 +475,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     #  - entreprise en perte (marge nette < 0) sans PER   -> note 0 sur le PER
     #  - dette / fonds propres pour la Finance            -> non applicable (critère retiré)
     #  - autre valeur manquante                            -> note neutre de 50 (la médiane)
+    #  - fonds propres négatifs (rachats d'actions massifs) -> P/B, ROE et dette/FP non calculables : retirés
     #  - plus de MAX_MISSING critères manquants            -> pas de score ("données insuffisantes")
     mdq = cfg.get("missing_data", {})
     max_missing = int(mdq.get("max_missing", 3))
@@ -481,6 +483,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     na_rules = mdq.get("not_applicable", {"debt_equity": ["Financial Services"]})
     status = pd.DataFrame("ok", index=ms.index, columns=ms.columns)
     loss = pd.Series({t: (infos.get(t, {}).get("profitMargins") or 0) < 0 for t in df.index})
+    neg_equity = pd.Series({t: (infos.get(t, {}).get("bookValue") or 0) < 0 for t in df.index})
     for m in ms.columns:
         miss = df[m].isna()
         status.loc[miss, m] = "manquant"
@@ -488,10 +491,12 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             status.loc[miss & loss, m] = "perte"
         for sector in na_rules.get(m, []):
             status.loc[df["sector"] == sector, m] = "non applicable"
+        if m in ("pb", "roe", "debt_equity"):
+            status.loc[miss & neg_equity, m] = "fonds propres négatifs"
     final = ms.copy()
     final[status == "manquant"] = neutral
     final[status == "perte"] = 0.0
-    final[status == "non applicable"] = np.nan
+    final[status.isin(["non applicable", "fonds propres négatifs"])] = np.nan
     df["n_missing"] = (status == "manquant").sum(axis=1)
     df["loss"] = loss.reindex(df.index).fillna(False)
     fam_scores = pd.DataFrame({fid: final[[m for m in f["metrics"] if m in final]].mean(axis=1) for fid, f in fams.items()})
