@@ -132,6 +132,7 @@ async function init() {
   try { S.macro = await getJSON("data/macro.json"); } catch { document.getElementById("app").innerHTML = '<div class="banner">Données indisponibles.</div>'; return; }
   try { S.sectors = await getJSON("data/sectors.json"); } catch { S.sectors = null; }
   try { S.companies = await getJSON("data/companies.json"); } catch { S.companies = null; }
+  try { S.analyse = await getJSON("data/analyse.json"); } catch { S.analyse = null; }
   const demo = [S.macro.demo && "baromètre macro", S.sectors?.demo && "secteurs et entreprises"].filter(Boolean);
   const banner = document.getElementById("demo-banner");
   banner.hidden = demo.length === 0;
@@ -822,13 +823,24 @@ function pageMacro(app) {
       Les indicateurs de risque (VIX, spreads, chômage, pétrole, incertitude) sont inversés ; l'inflation est notée selon son écart à la cible de 2 %.
       Les indicateurs sont moyennés par pilier, puis les piliers selon la grille 30 % croissance, 20 % inflation, 30 % marchés, 20 % risque.
       Un score élevé signale une économie en bonne santé et un risque faible.</p>
-      <p><b>Comment s'en servir ?</b> Testé depuis 2005, le baromètre est surtout un <b>filtre de risque</b> : n'être investi en actions américaines que lorsque le score dépasse 45 aurait divisé par deux la pire baisse (environ −25 % contre −48 %) pour un rendement au moins équivalent. Le niveau du score ne prédit pas les hausses ; sa <b>tendance sur 3 mois</b> est le signal le plus utile.</p></section>`;
+      ${howToUse()}</section>`;
   document.getElementById("show-pillars").addEventListener("change", renderHistory);
   document.getElementById("show-z").addEventListener("change", renderHistory);
   renderGauge(); renderPillars(); renderHistory(); renderContrib(); renderTable();
   const inds = viewIndicators();
   if (!S.selected || !inds.find((i) => i.id === S.selected)) S.selected = inds[0].id;
   renderDetail();
+}
+
+/* « Comment s'en servir ? » : chiffres lus dans data/analyse.json (scripts/analyse_decision.py) */
+function howToUse() {
+  const a = S.analyse?.macro?.US?.site;
+  if (!a) return "";
+  const bh = a.strategies.achat_conservation, s45 = a.strategies.investi_si_score_45, s55 = a.strategies.investi_si_score_55;
+  return `<p><b>Comment s'en servir ?</b> Testé depuis 2005 sur le S&P 500, le baromètre est surtout un <b>filtre de risque</b>.
+    N'être investi que lorsque le score dépasse 45 aurait ramené la pire baisse de ${fmt(bh.pire_baisse)} % à ${fmt(s45.pire_baisse)} %
+    pour un rendement annuel équivalent (${fmt(s45.rendement_annuel)} % contre ${fmt(bh.rendement_annuel)} %) ; au-dessus de 55, la pire baisse tombe à ${fmt(s55.pire_baisse)} %.
+    Le niveau du score prédit mal les hausses (corrélation ${fmt(a.correlation_score_perf12m, 2)}) ; sa <b>tendance sur 3 mois</b> est plus parlante (corrélation ${fmt(a.correlation_variation3m_perf12m, 2)}).</p>`;
 }
 
 function renderGauge() {
