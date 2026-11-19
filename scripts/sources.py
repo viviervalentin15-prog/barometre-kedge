@@ -132,8 +132,9 @@ def _eurostat(dataset: str, filters: dict) -> pd.Series:
         v = values.get(pos * stride)
         if v is not None:
             out[period] = v
-    s = pd.Series(out)
-    return s
+    if not out:
+        raise RuntimeError(f"Eurostat {dataset} {filters} : aucune valeur")
+    return pd.Series(out)
 
 
 def _period_to_month_end(index) -> pd.DatetimeIndex:
@@ -163,18 +164,49 @@ def eurostat_gdp() -> pd.Series:
     raise RuntimeError("PIB zone euro indisponible : " + " | ".join(errors))
 
 
-def eurostat_unemployment() -> pd.Series:
-    errors = []
-    for geo in ("EA20", "EA19"):
+def _freshest(candidates, label: str) -> pd.Series:
+    """Essaie plusieurs sources et garde celle qui a la donnée la plus récente."""
+    found, errors = [], []
+    for name, fn in candidates:
         try:
-            s = _eurostat("une_rt_m", {"geo": geo, "s_adj": "SA", "age": "TOTAL", "sex": "T",
-                                       "unit": "PC_ACT", "sinceTimePeriod": "2003-01"})
-            s.index = _period_to_month_end(s.index)
-            s.name = f"Eurostat chômage {geo}"
-            return s.sort_index()
+            x = fn().dropna().sort_index()
+            if len(x) > 24:
+                x.name = name
+                found.append(x)
+            else:
+                errors.append(f"{name}: historique trop court")
         except Exception as e:  # noqa: BLE001
-            errors.append(f"{geo}: {e}")
-    raise RuntimeError("Chômage zone euro indisponible : " + " | ".join(errors))
+            errors.append(f"{name}: {e}")
+    if not found:
+        raise RuntimeError(f"{label} indisponible : " + " | ".join(errors))
+    return max(found, key=lambda x: (x.index.max(), len(x)))
+
+
+def _eurostat_monthly(dataset: str, filters: dict) -> pd.Series:
+    x = _eurostat(dataset, filters)
+    x.index = _period_to_month_end(x.index)
+    return x
+
+
+def eurostat_unemployment() -> pd.Series:
+    """Taux de chômage zone euro : BCE en priorité, Eurostat en secours."""
+    candidates = [("BCE chômage zone euro", lambda: ecb("STS/M.I9.S.UNEH.RTT000.4.000"))]
+    for geo in ("EA20", "EA"):
+        for age in ("Y15-74", "TOTAL"):
+            candidates.append((f"Eurostat chômage {geo}", lambda g=geo, a=age: _eurostat_monthly(
+                "une_rt_m", {"geo": g, "s_adj": "SA", "age": a, "sex": "T", "unit": "PC_ACT",
+                             "sinceTimePeriod": "2003-01"})))
+    return _freshest(candidates, "Chômage zone euro")
+
+
+def hicp_ez() -> pd.Series:
+    """Inflation HICP zone euro sur 1 an. La composition de la zone change (Bulgarie en 2026) :
+    on interroge plusieurs codes et on garde la série la plus à jour."""
+    candidates = [("BCE HICP zone euro", lambda: ecb("ICP/M.U2.N.000000.4.ANR"))]
+    for geo in ("EA", "EA21", "EA20"):
+        candidates.append((f"Eurostat HICP {geo}", lambda g=geo: _eurostat_monthly(
+            "prc_hicp_manr", {"geo": g, "coicop": "CP00", "unit": "RCH_A", "sinceTimePeriod": "2003-01"})))
+    return _freshest(candidates, "Inflation zone euro")
 
 
 # ---------------------------------------------------------------------------

@@ -104,7 +104,7 @@ indicators:
     method: target
     target: 2.0
     unit: "%"
-    source: { type: ecb, key: "ICP/M.U2.N.000000.4.ANR" }
+    source: { type: hicp_ez }
 
   - id: breakeven_us
     name: "Point mort d'inflation 10 ans, écart à 2 %"
@@ -164,7 +164,7 @@ indicators:
     source: { type: fred, series: VIXCLS }
 
   - id: credit_spread
-    name: "Spread de crédit High Yield"
+    name: "Spread de crédit des entreprises"
     zone: MONDE
     pillar: risque
     weight: 7

@@ -57,6 +57,8 @@ def fetch_raw(src: dict) -> pd.Series:
         return sources.eurostat_gdp()
     if kind == "eurostat_unemployment":
         return sources.eurostat_unemployment()
+    if kind == "hicp_ez":
+        return sources.hicp_ez()
     if kind == "ecb":
         return sources.ecb(src["key"])
     if kind == "ecb_slope":
