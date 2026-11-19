@@ -177,3 +177,39 @@ td.name { min-width: 190px; }
 .nowrap { white-space: nowrap; }
 .filters input[type=search] { min-width: 300px; }
 .page { padding-bottom: 90px; }
+
+/* ---------- étape 3 : fiche et pools ---------- */
+.kpi-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.chart-sm { height: 240px; }
+.mt { margin-top: 18px; }
+.segmented.small button { padding: 4px 10px; font-size: 12px; }
+.pool-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pool-tools input[type=text], .pool-tools input[type=search] { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.add-box { position: relative; }
+.add-box input { min-width: 320px; }
+.suggest { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.1); z-index: 30; max-height: 320px; overflow-y: auto; }
+.suggest div { padding: 8px 10px; cursor: pointer; font-size: 14px; }
+.suggest div:hover { background: var(--accent-soft); }
+.btn[disabled] { opacity: .4; cursor: default; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; background: #fff; }
+.chip i, .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+.chip button { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1; padding: 0 4px; }
+.chip button:hover { color: var(--critical); }
+.saved { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.saved-chip a { text-decoration: none; }
+.table.compare th, .table.compare td { white-space: nowrap; }
+.table.compare th a { color: var(--ink); text-decoration: none; }
+.table.compare tr.group td { background: var(--bg); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.table.compare tbody tr { cursor: default; }
+.table.compare tbody tr:hover { background: transparent; }
+.diversif { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+
+@media print {
+  .topbar, .toolbar, .pool-manager, .pool-bar, .footer, .banner, .segmented { display: none !important; }
+  body { background: #fff; }
+  .page { padding: 0; max-width: none; }
+  .card { break-inside: avoid; border-color: #ddd; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+}
+.table.compare th { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); }

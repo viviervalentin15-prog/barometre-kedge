@@ -267,6 +267,23 @@ def download_prices(tickers: list[str]) -> pd.DataFrame:
     return prices.loc[:, ~prices.columns.duplicated()]
 
 
+BENCHMARKS = {"US": ("^GSPC", "S&P 500"), "EZ": ("^STOXX50E", "Euro Stoxx 50")}
+
+
+def download_benchmarks() -> pd.DataFrame:
+    import yfinance as yf
+    out = {}
+    for zone, (ticker, _) in BENCHMARKS.items():
+        try:
+            c = yf.download(ticker, period="5y", auto_adjust=True, progress=False, threads=False)["Close"]
+            c = c.iloc[:, 0] if isinstance(c, pd.DataFrame) else c
+            c.index = pd.to_datetime(c.index).tz_localize(None).normalize()
+            out[zone] = c.dropna()
+        except Exception as e:  # noqa: BLE001
+            log(f"ECHEC indice {ticker} : {e}")
+    return pd.DataFrame(out)
+
+
 def eurusd() -> float:
     try:
         import yfinance as yf
@@ -411,12 +428,14 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     if demo:
         prices, infos = demo_data(universe)
         fx = 1.10
+        bench = pd.DataFrame({z: prices.iloc[:, k::7].mean(axis=1) for k, z in enumerate(BENCHMARKS)})
     else:
         fetch_infos(tickers, infos)
         save_infos(infos)
         log("Téléchargement des cours sur 5 ans...")
         prices = download_prices(tickers)
         fx = eurusd()
+        bench = download_benchmarks()
     log(f"EUR/USD utilisé pour comparer les tailles : {fx:.4f}")
 
     # --- tableau des entreprises ---
@@ -463,7 +482,10 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     sc = cfg["sector_score"]
     rets = prices.pct_change(fill_method=None)
     weekly_dates = prices.resample("W-FRI").last().index
-    sector_out = {"views": {}, "index_dates": [f"{d:%Y-%m-%d}" for d in weekly_dates]}
+    sector_out = {"views": {}, "index_dates": [f"{d:%Y-%m-%d}" for d in weekly_dates],
+                  "benchmarks": {z: {"name": BENCHMARKS[z][1],
+                                     "values": [rnd(x) for x in bench[z].resample("W-FRI").last().reindex(weekly_dates)]}
+                                 for z in bench.columns}}
     for view, zones in VIEWS.items():
         macro_score = macro["views"][view]["latest"]["score"] if macro else 50.0
         items = []

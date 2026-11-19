@@ -19,6 +19,9 @@ function scoreColor(s) {
 }
 const fmt = (x, d = 1) => (x == null || Number.isNaN(x) ? "–" : Number(x).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const signed = (x, d = 1) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, d));
+/* valeur + unité, ou un simple tiret si la donnée manque */
+const fu = (x, d, unit) => (x == null || Number.isNaN(x) ? "–" : fmt(x, d) + (unit ? " " + unit : ""));
+const sp = (x, d = 1) => (x == null ? "–" : signed(x, d) + " %");
 const pctCls = (x) => (x > 0 ? "up" : x < 0 ? "down" : "");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const safeName = (t) => t.replace(/[^A-Za-z0-9]/g, "_");
@@ -203,7 +206,7 @@ function pageSector(app, id) {
       ${kpi("Performance 1 mois", signed(s.perf_1m) + " %", pctCls(s.perf_1m))}
       ${kpi("Depuis le 1er janvier", signed(s.perf_ytd) + " %", pctCls(s.perf_ytd))}
       ${kpi("Performance 1 an", signed(s.perf_1y) + " %", pctCls(s.perf_1y))}
-      ${kpi("PER médian", fmt(s.pe_median) + " x")}
+      ${kpi("PER médian", fu(s.pe_median, 1, "x"))}
       ${kpi("Rendement moyen du dividende", fmt(s.div_yield_avg, 2) + " %")}
     </section>
     <section class="grid-2">
@@ -231,7 +234,7 @@ function pageSector(app, id) {
   companyTable(document.getElementById("table"), { sector: id });
 }
 
-function kpi(label, value, cls = "") { return `<div class="card kpi"><div class="label">${label}</div><div class="kpi-value ${cls}">${value}</div></div>`; }
+function kpi(label, value, cls = "", sub = "") { return `<div class="card kpi"><div class="label">${label}</div><div class="kpi-value ${cls}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`; }
 
 /* =====================================================================
    LISTE DES ENTREPRISES (page globale et page secteur)
@@ -316,14 +319,73 @@ function inSize(cap, bucket) {
 }
 
 /* =====================================================================
-   FICHE ENTREPRISE (version de base, enrichie à l'étape 3)
+   OUTILS DE COMPARAISON (fiche et pools)
+   ===================================================================== */
+const PERIODS = [["1a", 52, "1 an"], ["3a", 156, "3 ans"], ["5a", 400, "5 ans"]];
+const PALETTE = ["#1f4e8c", "#e76f51", "#2a9d8f", "#c27c0e", "#6c5ce7", "#d63384", "#3d8bfd", "#8a6d3b", "#20c997", "#6f42c1", "#fd7e14", "#495057"];
+const RECO = { strong_buy: "Achat fort", buy: "Achat", hold: "Conserver", underperform: "Sous-performance", sell: "Vente", outperform: "Surperformance", none: "–" };
+
+/* Aligne des séries hebdomadaires sur une liste de dates et les rebase à 100 au début de la période. */
+function rebase(dates, values, start) {
+  const out = []; let base = null;
+  for (let k = 0; k < dates.length; k++) {
+    if (dates[k] < start) continue;
+    const v = values[k];
+    if (v == null) { out.push([dates[k], null]); continue; }
+    if (base == null) base = v;
+    out.push([dates[k], +(v / base * 100).toFixed(2)]);
+  }
+  return out;
+}
+function seriesByDate(dates, values) { const m = new Map(); dates.forEach((d, k) => m.set(d, values[k])); return m; }
+function startDate(weeks) { const d = new Date(); d.setDate(d.getDate() - weeks * 7); return d.toISOString().slice(0, 10); }
+function periodButtons(id, cur) {
+  return `<div class="segmented small" id="${id}">${PERIODS.map(([k, , l]) => `<button data-p="${k}" class="${k === cur ? "on" : ""}">${l}</button>`).join("")}</div>`;
+}
+function bindPeriod(id, onChange) {
+  document.querySelectorAll(`#${id} button`).forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle("on", x === b)); onChange(b.dataset.p);
+  }));
+}
+const weeksOf = (p) => PERIODS.find((x) => x[0] === p)[1];
+async function loadDetails(tickers) {
+  return Promise.all(tickers.map(async (t) => { try { return (S.detailCache[t] ||= await getJSON(`data/companies/${safeName(t)}.json`)); } catch { return null; } }));
+}
+function sectorAverage(sectorId) {
+  return S.sectors?.views.commun.sectors.find((x) => x.id === sectorId);
+}
+/* Concurrents : même sous-industrie d'abord, puis même secteur, taille la plus proche. */
+function peersOf(d, n = 6) {
+  const all = S.companies.companies.filter((c) => c.t !== d.ticker && c.s === d.sector && c.sc != null);
+  const cap = (d.cap_usd || 0) / 1e9;
+  const dist = (c) => (c.i === d.industry ? 0 : 1000) + Math.abs(Math.log((c.cap || 0.1) / (cap || 0.1)));
+  return all.sort((a, b) => dist(a) - dist(b)).slice(0, n);
+}
+function weeklyReturns(closes) {
+  const r = []; for (let k = 1; k < closes.length; k++) r.push(closes[k] != null && closes[k - 1] != null ? closes[k] / closes[k - 1] - 1 : null); return r;
+}
+function std(xs) { const v = xs.filter((x) => x != null); if (v.length < 3) return null; const m = v.reduce((a, b) => a + b, 0) / v.length; return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)); }
+function corr(a, b) {
+  const p = a.map((x, k) => [x, b[k]]).filter(([x, y]) => x != null && y != null);
+  if (p.length < 10) return null;
+  const mx = p.reduce((s, [x]) => s + x, 0) / p.length, my = p.reduce((s, [, y]) => s + y, 0) / p.length;
+  let sxy = 0, sx = 0, sy = 0; p.forEach(([x, y]) => { sxy += (x - mx) * (y - my); sx += (x - mx) ** 2; sy += (y - my) ** 2; });
+  return sx && sy ? sxy / Math.sqrt(sx * sy) : null;
+}
+
+/* =====================================================================
+   FICHE ENTREPRISE
    ===================================================================== */
 async function pageCompany(app, ticker) {
   app.innerHTML = '<div class="card">Chargement…</div>';
-  let d;
-  try { d = S.detailCache[ticker] ||= await getJSON(`data/companies/${safeName(ticker)}.json`); } catch { app.innerHTML = '<div class="card">Entreprise introuvable. <a href="#/entreprises">Retour</a></div>'; return; }
+  const [d] = await loadDetails([ticker]);
+  if (!d) { app.innerHTML = '<div class="card">Entreprise introuvable. <a href="#/entreprises">Retour</a></div>'; return; }
   const fams = S.companies.families;
   const cur = d.currency === "EUR" ? "€" : d.currency === "USD" ? "$" : d.currency;
+  const upside = d.target_price && d.price ? (d.target_price / d.price - 1) * 100 : null;
+  const sec = sectorAverage(d.sector);
+  const bench = S.sectors?.benchmarks?.[d.zone];
+  const peers = peersOf(d);
   app.innerHTML = `
     <a class="back" href="#/secteur/${encodeURIComponent(d.sector)}">← ${d.sector_label}</a>
     <section class="sector-head card">
@@ -331,7 +393,8 @@ async function pageCompany(app, ticker) {
         <div class="label">${esc(d.ticker)} · ${esc(d.country)} · ${esc(d.industry)}</div>
         <h1>${esc(d.long_name || d.name)}</h1>
         <div class="decomp"><span>Rang dans le secteur <b>${d.rank_sector ?? "–"}</b> / ${d.sector_size}</span>
-          <label class="check"><input type="checkbox" id="add-pool" ${Pool.items.has(d.ticker) ? "checked" : ""}> Ajouter au pool</label></div>
+          <label class="check"><input type="checkbox" id="add-pool" ${Pool.items.has(d.ticker) ? "checked" : ""}> Ajouter au pool</label>
+          <button class="btn ghost small" id="cmp-peers">Comparer avec ses concurrents</button></div>
       </div>
       <div class="big-score" style="color:${scoreColor(d.score)}">${fmt(d.score)}<small>/100</small></div>
     </section>
@@ -340,50 +403,315 @@ async function pageCompany(app, ticker) {
       ${kpi("Capitalisation", capLabel(d.cap_usd / 1e9))}
       ${kpi("Performance 1 an", signed(d.perf.perf_1y) + " %", pctCls(d.perf.perf_1y))}
       ${kpi("Depuis le 1er janvier", signed(d.perf.perf_ytd) + " %", pctCls(d.perf.perf_ytd))}
-      ${kpi("PER", fmt(d.metrics.pe.value) + " x")}
-      ${kpi("Dividende", fmt(d.metrics.div_yield.value, 2) + " %")}
+      ${kpi("PER", fu(d.metrics.pe.value, 1, "x"), "", `secteur ${fu(d.metrics.pe.sector_median, 1, "x")}`)}
+      ${kpi("Dividende", fu(d.metrics.div_yield.value, 2, "%"), "", `secteur ${fu(d.metrics.div_yield.sector_median, 2, "%")}`)}
+    </section>
+    <section class="kpis">
+      ${kpi("Objectif moyen des analystes", d.target_price ? fmt(d.target_price, 2) + " " + cur : "–", "", upside != null ? `<span class="${pctCls(upside)}">${signed(upside)} % de potentiel</span>` : "")}
+      ${kpi("Recommandation des analystes", RECO[d.recommendation] || "–")}
+      ${kpi("PER prévisionnel", fu(d.forward_pe, 1, "x"))}
+      ${kpi("VE / EBITDA", fu(d.ev_ebitda, 1, "x"))}
+      ${kpi("Marge nette", fu(d.net_margin, 1, "%"))}
+      ${kpi("Salariés", d.employees ? Number(d.employees).toLocaleString("fr-FR") : "–")}
     </section>
     <section class="grid-2">
-      <div class="card"><div class="card-head"><h2>Cours sur 5 ans</h2></div><div id="c-price" class="chart chart-md"></div></div>
-      <div class="card"><div class="card-head"><h2>Score par famille</h2></div><p class="hint">Note sur 100, relative aux entreprises du secteur ${esc(d.sector_label)}.</p><div id="c-fams" class="chart chart-md"></div></div>
+      <div class="card"><div class="card-head"><h2>Performance comparée</h2>${periodButtons("c-period", "1a")}</div>
+        <p class="hint">Base 100 au début de la période : l'entreprise, son secteur et ${bench ? bench.name : "le marché"}.</p><div id="c-perf" class="chart chart-md"></div></div>
+      <div class="card"><div class="card-head"><h2>Profil face au secteur</h2></div>
+        <p class="hint">Notes sur 100 par famille : l'entreprise et la moyenne de son secteur.</p><div id="c-fams" class="chart chart-md"></div></div>
+    </section>
+    <section class="grid-2">
+      <div class="card"><div class="card-head"><h2>Position dans le secteur</h2></div>
+        <p class="hint">Chaque point est une entreprise du secteur ${esc(d.sector_label)}, placée selon son score et sa capitalisation.</p><div id="c-pos" class="chart chart-md"></div></div>
+      <div class="card"><div class="card-head"><h2>Critères face à la médiane du secteur</h2></div>
+        <p class="hint">Note sur 100 de chaque critère ; le trait gris marque 50, le niveau d'une entreprise médiane.</p><div id="c-metrics" class="chart chart-md"></div></div>
     </section>
     <section class="card"><div class="card-head"><h2>Détail des critères</h2></div>
       <div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critère</th><th class="num">Valeur</th><th class="num">Médiane du secteur</th><th class="num">Note /100</th></tr></thead>
       <tbody>${fams.map((f) => f.metrics.map((m, k) => { const x = d.metrics[m.id] || {}; return `<tr>
-        <td>${k === 0 ? `<b>${f.label}</b>` : ""}</td><td>${m.label}</td>
-        <td class="num">${fmt(x.value, 2)} ${m.unit}</td><td class="num muted">${fmt(x.sector_median, 2)} ${m.unit}</td><td class="num">${scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
+        <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${m.label}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
+        <td class="num">${fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
     </section>
-    ${d.summary ? `<section class="card"><h2>Activité</h2><p class="muted summary">${esc(d.summary)}${d.summary.length >= 900 ? "…" : ""}</p>${d.website ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>` : ""}</section>` : ""}`;
+    <section class="grid-2">
+      <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
+        <p class="hint">Même sous-industrie en priorité, puis même secteur, taille comparable.</p>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Entreprise</th><th>Pays</th><th class="num">Capi.</th><th class="num">Score</th><th class="num">Perf. 1 an</th></tr></thead><tbody>
+        <tr class="sel"><td><b>${esc(d.name)}</b></td><td class="muted">${esc(d.country)}</td><td class="num">${capLabel(d.cap_usd / 1e9)}</td><td class="num">${scorePill(d.score)}</td><td class="num ${pctCls(d.perf.perf_1y)}">${signed(d.perf.perf_1y)} %</td></tr>
+        ${peers.map((c) => `<tr><td><a href="#/entreprise/${encodeURIComponent(c.t)}">${esc(c.n)}</a><div class="src">${esc(c.i)}</div></td><td class="muted">${esc(c.c)}</td><td class="num">${capLabel(c.cap)}</td><td class="num">${scorePill(c.sc)}</td><td class="num ${pctCls(c.p1y)}">${signed(c.p1y)} %</td></tr>`).join("")}
+        </tbody></table></div></div>
+      <div class="card"><div class="card-head"><h2>Évolution du score</h2></div><div id="c-hist" class="chart chart-sm"></div><p class="hint" id="c-hist-note"></p>
+        ${d.summary ? `<h2 class="mt">Activité</h2><p class="muted summary">${esc(d.summary)}${d.summary.length >= 900 ? "…" : ""}</p>${d.website ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>` : ""}` : ""}</div>
+    </section>`;
+
   document.getElementById("add-pool").addEventListener("change", (e) => Pool.toggle(d.ticker, e.target.checked));
-  chart("c-price").setOption({
-    grid: { left: 54, right: 16, top: 16, bottom: 40 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 2) + " " + cur },
-    xAxis: { type: "time", splitLine: { show: false } },
-    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, dataZoom: [{ type: "inside" }],
-    series: [{ type: "line", data: d.prices.dates.map((x, k) => [x, d.prices.close[k]]), symbol: "none", lineStyle: { width: 2, color: "#1f4e8c" }, areaStyle: { color: "rgba(31,78,140,.07)" } }],
+  document.getElementById("cmp-peers").addEventListener("click", () => {
+    Pool.items = new Set([d.ticker, ...peers.slice(0, 4).map((c) => c.t)]); Pool.save(); location.hash = "#/pools";
   });
+
+  // Performance comparée
+  const secView = S.sectors?.views[d.zone]?.sectors.find((x) => x.id === d.sector);
+  const drawPerf = (p) => {
+    const start = startDate(weeksOf(p));
+    const series = [{ name: d.name, type: "line", symbol: "none", lineStyle: { width: 2.5, color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" }, data: rebase(d.prices.dates, d.prices.close, start) }];
+    if (secView) series.push({ name: `Secteur ${d.sector_label} (${ZONE_LABEL[d.zone]})`, type: "line", symbol: "none", lineStyle: { width: 1.5, color: "#2a9d8f" }, itemStyle: { color: "#2a9d8f" }, data: rebase(S.sectors.index_dates, secView.index, start) });
+    if (bench) series.push({ name: bench.name, type: "line", symbol: "none", lineStyle: { width: 1.5, color: "#8a8f98", type: "dashed" }, itemStyle: { color: "#8a8f98" }, data: rebase(S.sectors.index_dates, bench.values, start) });
+    chart("c-perf").setOption({ grid: { left: 44, right: 16, top: 40, bottom: 30 }, legend: { top: 0, type: "scroll" }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) },
+      xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, series }, true);
+  };
+  drawPerf("1a"); bindPeriod("c-period", drawPerf);
+
+  // Radar entreprise vs secteur
   chart("c-fams").setOption({
-    radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "65%", splitArea: { show: false } },
-    series: [{ type: "radar", data: [{ value: fams.map((f) => d.families[f.id] ?? 0), name: d.name, areaStyle: { color: "rgba(31,78,140,.18)" }, lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" },
-      label: { show: true, formatter: (p) => fmt(p.value, 0) } }] }],
+    legend: { bottom: 0 }, tooltip: {},
+    radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "62%", splitArea: { show: false } },
+    series: [{ type: "radar", data: [
+      { value: fams.map((f) => d.families[f.id] ?? 0), name: d.name, areaStyle: { color: "rgba(31,78,140,.2)" }, lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" }, label: { show: true, formatter: (p) => fmt(p.value, 0) } },
+      ...(sec ? [{ value: fams.map((f) => sec.families[f.id] ?? 0), name: "Moyenne du secteur", lineStyle: { color: "#c27c0e", type: "dashed" }, itemStyle: { color: "#c27c0e" } }] : []),
+    ] }],
   });
+
+  // Position dans le secteur
+  const mates = S.companies.companies.filter((c) => c.s === d.sector && c.sc != null && c.cap);
+  chart("c-pos").setOption({
+    grid: { left: 50, right: 20, top: 34, bottom: 44 },
+    tooltip: { formatter: (p) => `${esc(p.data[2])}<br>Score ${fmt(p.data[1])} · ${capLabel(p.data[0])}` },
+    xAxis: { type: "log", name: "Capitalisation (Md$, échelle log.)", nameLocation: "middle", nameGap: 28, splitLine: { show: false } },
+    yAxis: { type: "value", name: "Score", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    series: [
+      { type: "scatter", symbolSize: 7, itemStyle: { color: "rgba(138,143,152,.45)" }, data: mates.filter((c) => c.t !== d.ticker).map((c) => [c.cap, c.sc, c.n]) },
+      { type: "scatter", symbolSize: 16, itemStyle: { color: "#1f4e8c", borderColor: "#fff", borderWidth: 2 }, data: [[d.cap_usd / 1e9, d.score, d.name]],
+        label: { show: true, position: "top", formatter: () => d.name, fontWeight: 600, color: "#16202e" } },
+    ],
+  });
+
+  // Critères (barres centrées sur 50)
+  const ms = fams.flatMap((f) => f.metrics.map((m) => ({ ...m, fam: f.label, s: d.metrics[m.id]?.score })));
+  const rev = [...ms].reverse();
+  chart("c-metrics").setOption({
+    grid: { left: 200, right: 30, top: 10, bottom: 20 },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (a) => `${a[0].name}<br>Note ${fmt(a[0].value, 0)} / 100` },
+    xAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "category", data: rev.map((m) => m.label), axisLabel: { fontSize: 11, width: 190, overflow: "truncate" } },
+    series: [{ type: "bar", barWidth: 10, data: rev.map((m) => ({ value: m.s, itemStyle: { color: scoreColor(m.s), borderRadius: 2 } })),
+      markLine: { silent: true, symbol: "none", lineStyle: { color: "#8a8f98", type: "dashed" }, label: { show: false }, data: [{ xAxis: 50 }] } }],
+  });
+
+  // Historique du score
+  const h = d.score_history;
+  const note = document.getElementById("c-hist-note");
+  if (h && h.dates.length >= 2) {
+    chart("c-hist").setOption({ grid: { left: 36, right: 16, top: 10, bottom: 24 }, tooltip: { trigger: "axis" },
+      xAxis: { type: "time" }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+      series: [{ type: "line", data: h.dates.map((x, k) => [x, h.score[k]]), lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" } }] });
+    note.textContent = "Un point par mise à jour des données.";
+  } else {
+    document.getElementById("c-hist").style.display = "none";
+    note.textContent = `L'historique du score se construit à chaque mise à jour hebdomadaire${h ? ` (premier relevé le ${new Date(h.dates[0]).toLocaleDateString("fr-FR")} : ${fmt(h.score[0])}/100)` : ""}.`;
+  }
 }
 
 /* =====================================================================
-   POOLS (rapport comparatif complet à l'étape 3)
+   POOLS : sélection, pools enregistrés et rapport comparatif
    ===================================================================== */
-function pagePools(app) {
-  const rows = (S.companies?.companies || []).filter((c) => Pool.items.has(c.t));
-  const fams = S.companies?.families || [];
-  app.innerHTML = `<section class="card"><div class="card-head"><h2>Ma sélection (${rows.length})</h2>${rows.length ? '<button class="btn ghost" id="pool-clear-2">Vider la sélection</button>' : ""}</div>
-    ${rows.length ? `<p class="hint">Le rapport comparatif complet (courbes superposées, comparaison des critères, score du pool) arrive à l'étape 3.</p>
-      <div class="table-wrap"><table class="table"><thead><tr><th>Entreprise</th><th>Secteur</th><th class="num">Score</th>${fams.map((f) => `<th class="num">${f.label}</th>`).join("")}<th class="num">Perf. 1 an</th><th></th></tr></thead><tbody>
-      ${rows.sort((a, b) => (b.sc ?? 0) - (a.sc ?? 0)).map((c) => `<tr><td><a href="#/entreprise/${encodeURIComponent(c.t)}"><b>${esc(c.n)}</b></a></td><td class="muted">${sectorLabel(c.s)}</td><td class="num">${scorePill(c.sc)}</td>
-        ${fams.map((f) => `<td class="num fam" style="color:${scoreColor(c["f_" + f.id])}">${fmt(c["f_" + f.id], 0)}</td>`).join("")}<td class="num ${pctCls(c.p1y)}">${signed(c.p1y)} %</td>
-        <td><button class="btn ghost small" data-t="${esc(c.t)}">Retirer</button></td></tr>`).join("")}</tbody></table></div>
-      <p class="pool-avg">Score moyen de la sélection : <b>${fmt(rows.reduce((s, c) => s + (c.sc ?? 0), 0) / rows.length)}</b></p>`
-    : '<p class="hint">Aucune entreprise sélectionnée. Cochez des entreprises dans la <a href="#/entreprises">liste</a> ou dans une page secteur.</p>'}</section>`;
+const SavedPools = {
+  all() { try { return JSON.parse(localStorage.getItem("pools-saved") || "{}"); } catch { return {}; } },
+  set(obj) { try { localStorage.setItem("pools-saved", JSON.stringify(obj)); } catch { /* stockage indisponible */ } },
+  save(name, tickers) { const a = this.all(); a[name] = tickers; this.set(a); },
+  remove(name) { const a = this.all(); delete a[name]; this.set(a); },
+};
+
+async function pagePools(app) {
+  const byT = new Map((S.companies?.companies || []).map((c) => [c.t, c]));
+  const rows = [...Pool.items].map((t) => byT.get(t)).filter(Boolean);
+  const saved = SavedPools.all();
+  app.innerHTML = `
+    <section class="card pool-manager">
+      <div class="card-head"><h2>Composer un pool</h2></div>
+      <div class="pool-tools">
+        <div class="add-box"><input type="search" id="pool-search" placeholder="Ajouter une entreprise : nom ou code…" autocomplete="off"><div class="suggest" id="pool-suggest" hidden></div></div>
+        <input type="text" id="pool-name" placeholder="Nom du pool (ex. Luxe européen)">
+        <button class="btn" id="pool-save" ${rows.length ? "" : "disabled"}>Enregistrer</button>
+        ${rows.length ? '<button class="btn ghost" id="pool-clear-2">Vider</button>' : ""}
+        <button class="btn ghost" id="pool-print" ${rows.length >= 2 ? "" : "disabled"}>Imprimer le rapport</button>
+      </div>
+      <div class="chips">${rows.map((c, k) => `<span class="chip"><i style="background:${PALETTE[k % PALETTE.length]}"></i>${esc(c.n)}<button data-t="${esc(c.t)}" title="Retirer">×</button></span>`).join("") || '<span class="hint">Aucune entreprise : cherchez-en une ci-dessus, ou cochez-en dans la <a href="#/entreprises">liste</a>.</span>'}</div>
+      ${Object.keys(saved).length ? `<div class="saved"><span class="hint">Pools enregistrés :</span> ${Object.entries(saved).map(([n, ts]) => `<span class="chip saved-chip"><a href="#" data-load="${esc(n)}">${esc(n)} (${ts.length})</a><button data-del="${esc(n)}" title="Supprimer">×</button></span>`).join("")}</div>` : ""}
+    </section>
+    <div id="pool-report">${rows.length >= 2 ? '<div class="card">Préparation du rapport…</div>' : rows.length === 1 ? '<div class="card hint">Ajoutez au moins une autre entreprise pour obtenir le rapport comparatif.</div>' : ""}</div>`;
+
+  // Gestion du pool
+  const search = document.getElementById("pool-search"), sug = document.getElementById("pool-suggest");
+  search.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    if (q.length < 2) { sug.hidden = true; return; }
+    const hits = S.companies.companies.filter((c) => !Pool.items.has(c.t) && (c.n.toLowerCase().includes(q) || c.t.toLowerCase().startsWith(q))).slice(0, 8);
+    sug.innerHTML = hits.map((c) => `<div data-t="${esc(c.t)}"><b>${esc(c.n)}</b> <span class="src">${esc(c.t)} · ${esc(sectorLabel(c.s))}</span></div>`).join("") || '<div class="src">Aucun résultat</div>';
+    sug.hidden = false;
+    sug.querySelectorAll("div[data-t]").forEach((el) => el.addEventListener("mousedown", () => { Pool.toggle(el.dataset.t, true); route(); }));
+  });
+  search.addEventListener("blur", () => setTimeout(() => (sug.hidden = true), 150));
+  app.querySelectorAll(".chips button[data-t]").forEach((b) => b.addEventListener("click", () => { Pool.toggle(b.dataset.t, false); route(); }));
   document.getElementById("pool-clear-2")?.addEventListener("click", () => Pool.clear());
-  app.querySelectorAll("button[data-t]").forEach((b) => b.addEventListener("click", () => { Pool.toggle(b.dataset.t, false); route(); }));
+  document.getElementById("pool-print")?.addEventListener("click", () => window.print());
+  document.getElementById("pool-save").addEventListener("click", () => {
+    const name = document.getElementById("pool-name").value.trim() || `Pool du ${new Date().toLocaleDateString("fr-FR")}`;
+    SavedPools.save(name, [...Pool.items]); route();
+  });
+  app.querySelectorAll("[data-load]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); Pool.items = new Set(saved[a.dataset.load]); Pool.save(); route(); }));
+  app.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => { SavedPools.remove(b.dataset.del); route(); }));
+
+  if (rows.length >= 2) await poolReport(document.getElementById("pool-report"), rows);
+}
+
+async function poolReport(box, rows) {
+  const details = await loadDetails(rows.map((c) => c.t));
+  const items = rows.map((c, k) => ({ c, d: details[k], color: PALETTE[k % PALETTE.length] })).filter((x) => x.d);
+  const fams = S.companies.families;
+  const avg = (f) => { const v = items.map(f).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const poolScore = avg((x) => x.c.sc);
+  const capW = items.reduce((s, x) => s + (x.c.cap || 0), 0);
+  const poolScoreCap = capW ? items.reduce((s, x) => s + (x.c.sc || 0) * (x.c.cap || 0), 0) / capW : null;
+  const ranked = [...items].sort((a, b) => (b.c.sc ?? -1) - (a.c.sc ?? -1));
+
+  // Diversification sur 1 an (rendements hebdomadaires)
+  const start = startDate(52);
+  const rets = items.map((x) => {
+    const m = seriesByDate(x.d.prices.dates, x.d.prices.close);
+    const dates = S.sectors.index_dates.filter((dt) => dt >= start);
+    return weeklyReturns(dates.map((dt) => m.get(dt) ?? null));
+  });
+  const vols = rets.map((r) => (std(r) != null ? std(r) * Math.sqrt(52) * 100 : null));
+  const poolRet = rets[0].map((_, k) => { const v = rets.map((r) => r[k]).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; });
+  const poolVol = std(poolRet) != null ? std(poolRet) * Math.sqrt(52) * 100 : null;
+  const okVols = vols.filter((v) => v != null);
+  const avgVol = okVols.length ? okVols.reduce((a, b) => a + b, 0) / okVols.length : null;
+  const C = items.map((_, i) => items.map((_, j) => (i === j ? 1 : corr(rets[i], rets[j]))));
+  const offDiag = C.flatMap((r, i) => r.filter((_, j) => j > i)).filter((x) => x != null);
+  const avgCorr = offDiag.length ? offDiag.reduce((a, b) => a + b, 0) / offDiag.length : null;
+  const perf1y = avg((x) => x.c.p1y);
+
+  box.innerHTML = `
+    <section class="sector-head card">
+      <div><div class="label">Rapport comparatif · ${items.length} entreprises · ${new Set(items.map((x) => x.c.s)).size} secteur(s)</div>
+        <h1>Score du pool</h1>
+        <div class="decomp"><span>Moyenne simple <b>${fmt(poolScore)}</b></span><span>Pondérée par la capitalisation <b>${fmt(poolScoreCap)}</b></span>
+          <span>Meilleure note <b>${esc(ranked[0].c.n)}</b></span></div></div>
+      <div class="big-score" style="color:${scoreColor(poolScore)}">${fmt(poolScore)}<small>/100</small></div>
+    </section>
+    <section class="kpis">
+      ${kpi("Performance moyenne 1 an", signed(perf1y) + " %", pctCls(perf1y))}
+      ${kpi("PER moyen", fu(avg((x) => x.c.pe), 1, "x"))}
+      ${kpi("Dividende moyen", fmt(avg((x) => x.c.dy), 2) + " %")}
+      ${kpi("Volatilité du pool (1 an)", fmt(poolVol) + " %", "", `moyenne des titres ${fmt(avgVol)} %`)}
+      ${kpi("Corrélation moyenne", fmt(avgCorr, 2), "", "entre les titres, sur 1 an")}
+    </section>
+    <section class="grid-2">
+      <div class="card"><div class="card-head"><h2>Classement interne</h2></div><p class="hint">Score sur 100 et contribution des 4 familles (25 points chacune).</p><div id="p-rank" class="chart" style="height:${items.length * 34 + 70}px"></div></div>
+      <div class="card"><div class="card-head"><h2>Profils comparés</h2></div><p class="hint">Notes par famille, relatives au secteur de chaque entreprise.</p><div id="p-radar" class="chart chart-md"></div></div>
+    </section>
+    <section class="card"><div class="card-head"><h2>Courbes superposées</h2>${periodButtons("p-period", "1a")}</div>
+      <p class="hint">Base 100 au début de la période. Trait épais noir : le pool équipondéré. Pointillés : les indices de référence.</p><div id="p-perf" class="chart chart-lg"></div></section>
+    <section class="card"><div class="card-head"><h2>Comparaison des indicateurs</h2></div>
+      <p class="hint">Couleur = note sur 100 du critère dans le secteur de l'entreprise ; ★ = meilleure note du pool sur la ligne.</p>
+      <div class="table-wrap"><table class="table compare" id="p-table"></table></div></section>
+    <section class="grid-2">
+      <div class="card"><div class="card-head"><h2>Corrélations sur 1 an</h2></div><p class="hint">Rendements hebdomadaires. Plus les titres sont peu corrélés, plus le pool est diversifié.</p><div id="p-corr" class="chart" style="height:${Math.max(300, items.length * 40 + 90)}px"></div></div>
+      <div class="card"><div class="card-head"><h2>Diversification</h2></div>
+        <p class="diversif">${diversificationText(poolVol, avgVol, avgCorr, items)}</p>
+        <div id="p-risk" class="chart chart-sm"></div></div>
+    </section>`;
+
+  // Classement interne : barres empilées par famille
+  const rev = [...ranked].reverse();
+  chart("p-rank").setOption({
+    grid: { left: 170, right: 50, top: 30, bottom: 10 }, legend: { top: 0 },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => fmt(v) },
+    xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "category", data: rev.map((x) => x.c.n), axisLabel: { width: 160, overflow: "truncate" } },
+    series: [...fams.map((f, k) => ({ name: f.label, type: "bar", stack: "s", barWidth: 16,
+      itemStyle: { color: ["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k] },
+      data: rev.map((x) => (x.c["f_" + f.id] != null ? +(x.c["f_" + f.id] * f.weight / 100).toFixed(1) : 0)) })),
+      { type: "scatter", symbolSize: 0, tooltip: { show: false }, data: rev.map((x) => x.c.sc), label: { show: true, position: "right", fontWeight: 600, formatter: (p) => fmt(p.value) } }],
+  });
+
+  // Radar superposé
+  chart("p-radar").setOption({
+    legend: { bottom: 0, type: "scroll" }, tooltip: {},
+    radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "60%", splitArea: { show: false } },
+    series: [{ type: "radar", data: items.map((x) => ({ name: x.c.n, value: fams.map((f) => x.c["f_" + f.id] ?? 0), lineStyle: { color: x.color, width: 2 }, itemStyle: { color: x.color }, areaStyle: { color: x.color, opacity: 0.06 } })) }],
+  });
+
+  // Courbes superposées
+  const zones = [...new Set(items.map((x) => x.c.z))];
+  const drawPerf = (p) => {
+    const st = startDate(weeksOf(p));
+    const curves = items.map((x) => rebase(x.d.prices.dates, x.d.prices.close, st));
+    const allDates = S.sectors.index_dates.filter((dt) => dt >= st);
+    const maps = curves.map((c) => new Map(c));
+    const pool = allDates.map((dt) => { const v = maps.map((m) => m.get(dt)).filter((x) => x != null); return [dt, v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : null]; });
+    const series = items.map((x, k) => ({ name: x.c.n, type: "line", symbol: "none", lineStyle: { width: 1.5, color: x.color }, itemStyle: { color: x.color }, data: curves[k] }));
+    series.push({ name: "Pool équipondéré", type: "line", symbol: "none", lineStyle: { width: 3.5, color: "#16202e" }, itemStyle: { color: "#16202e" }, data: pool, z: 5 });
+    zones.forEach((z) => { const b = S.sectors.benchmarks?.[z]; if (b) series.push({ name: b.name, type: "line", symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: "#8a8f98" }, itemStyle: { color: "#8a8f98" }, data: rebase(S.sectors.index_dates, b.values, st) }); });
+    chart("p-perf").setOption({ grid: { left: 44, right: 16, top: 50, bottom: 30 }, legend: { top: 0, type: "scroll" },
+      tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) }, xAxis: { type: "time", splitLine: { show: false } },
+      yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, dataZoom: [{ type: "inside" }], series }, true);
+  };
+  drawPerf("1a"); bindPeriod("p-period", drawPerf);
+
+  // Tableau comparatif
+  const cell = (val, score, best) => `<td class="num" style="background:${score == null ? "transparent" : scoreColor(score) + "22"}">${val}${best ? " ★" : ""}</td>`;
+  const bestIdx = (vals) => { let b = -1, bv = -Infinity; vals.forEach((v, k) => { if (v != null && v > bv) { bv = v; b = k; } }); return b; };
+  const head = `<thead><tr><th>Indicateur</th>${items.map((x) => `<th class="num"><i class="dot" style="background:${x.color}"></i><a href="#/entreprise/${encodeURIComponent(x.c.t)}">${esc(x.c.n)}</a></th>`).join("")}</tr></thead>`;
+  const line = (label, vals, scores, fmtv) => { const b = bestIdx(scores); return `<tr><td>${label}</td>${vals.map((v, k) => cell(fmtv(v), scores[k], k === b)).join("")}</tr>`; };
+  const group = (label) => `<tr class="group"><td colspan="${items.length + 1}">${label}</td></tr>`;
+  let body = group("Synthèse");
+  body += line("<b>Score global</b>", items.map((x) => x.c.sc), items.map((x) => x.c.sc), (v) => `<b>${fmt(v)}</b>`);
+  body += `<tr><td>Secteur</td>${items.map((x) => `<td class="num muted">${esc(sectorLabel(x.c.s))}</td>`).join("")}</tr>`;
+  body += `<tr><td>Rang dans le secteur</td>${items.map((x) => `<td class="num">${x.d.rank_sector ?? "–"} / ${x.d.sector_size}</td>`).join("")}</tr>`;
+  body += `<tr><td>Capitalisation</td>${items.map((x) => `<td class="num">${capLabel(x.c.cap)}</td>`).join("")}</tr>`;
+  body += line("Performance 1 an", items.map((x) => x.c.p1y), items.map((x) => x.c.p1y), (v) => `<span class="${pctCls(v)}">${sp(v)}</span>`);
+  fams.forEach((f) => {
+    body += group(`${f.label} (25 points)`);
+    body += line(`<b>Note ${f.label.toLowerCase()}</b>`, items.map((x) => x.c["f_" + f.id]), items.map((x) => x.c["f_" + f.id]), (v) => `<b>${fmt(v, 0)}</b>`);
+    f.metrics.forEach((m) => {
+      body += line(`${m.label}`, items.map((x) => x.d.metrics[m.id]?.value), items.map((x) => x.d.metrics[m.id]?.score), (v) => fu(v, m.unit === "%" ? 1 : 2, m.unit));
+    });
+  });
+  body += group("Analystes");
+  const ups = items.map((x) => (x.d.target_price && x.d.price ? (x.d.target_price / x.d.price - 1) * 100 : null));
+  body += line("Potentiel vs objectif moyen", ups, ups, (v) => `<span class="${pctCls(v)}">${sp(v)}</span>`);
+  body += `<tr><td>Recommandation</td>${items.map((x) => `<td class="num">${RECO[x.d.recommendation] || "–"}</td>`).join("")}</tr>`;
+  document.getElementById("p-table").innerHTML = head + `<tbody>${body}</tbody>`;
+
+  // Corrélations
+  const names = items.map((x) => x.c.n);
+  chart("p-corr").setOption({
+    grid: { left: 150, right: 20, top: 10, bottom: 80 }, tooltip: { formatter: (p) => `${esc(names[p.data[1]])} / ${esc(names[p.data[0]])} : <b>${fmt(p.data[2], 2)}</b>` },
+    xAxis: { type: "category", data: names, axisLabel: { rotate: 35, width: 110, overflow: "truncate", fontSize: 11 } },
+    yAxis: { type: "category", inverse: true, data: names, axisLabel: { width: 140, overflow: "truncate", fontSize: 11 } },
+    visualMap: { show: false, min: -1, max: 1, inRange: { color: ["#2a9d8f", "#f5f6f8", "#c0392b"] } },
+    series: [{ type: "heatmap", data: C.flatMap((r, i) => r.map((v, j) => [j, i, v == null ? null : +v.toFixed(2)])), label: { show: items.length <= 10, fontSize: 10, formatter: (p) => fmt(p.data[2], 2) } }],
+  });
+
+  // Risque / rendement
+  chart("p-risk").setOption({
+    grid: { left: 50, right: 20, top: 34, bottom: 40 },
+    tooltip: { formatter: (p) => `${esc(p.data[2])}<br>Volatilité ${fmt(p.data[0])} % · perf. ${signed(p.data[1])} %` },
+    xAxis: { type: "value", name: "Volatilité 1 an (%)", nameLocation: "middle", nameGap: 26, scale: true, splitLine: { show: false } },
+    yAxis: { type: "value", name: "Perf. 1 an (%)", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    series: [{ type: "scatter", symbolSize: 11, data: items.map((x, k) => ({ value: [vols[k], x.c.p1y, x.c.n], itemStyle: { color: x.color } })) },
+      { type: "scatter", symbol: "diamond", symbolSize: 18, itemStyle: { color: "#16202e" }, data: [[poolVol, perf1y, "Pool équipondéré"]], label: { show: true, position: "right", formatter: "Pool" } }],
+  });
+}
+
+function diversificationText(poolVol, avgVol, avgCorr, items) {
+  if (poolVol == null || avgVol == null) return "Pas assez d'historique commun pour mesurer la diversification.";
+  const gain = (1 - poolVol / avgVol) * 100;
+  const sectors = new Set(items.map((x) => x.c.s)).size, zones = new Set(items.map((x) => x.c.z)).size;
+  return `Le pool équipondéré a une volatilité de <b>${fmt(poolVol)} %</b>, contre <b>${fmt(avgVol)} %</b> en moyenne pour ses titres pris un à un :
+    la diversification réduit le risque de <b>${fmt(gain, 0)} %</b>. La corrélation moyenne entre les titres est de <b>${fmt(avgCorr, 2)}</b>
+    (${avgCorr > 0.6 ? "élevée : les titres évoluent souvent ensemble" : avgCorr > 0.3 ? "modérée" : "faible : bonne diversification"}).
+    Le pool couvre ${sectors} secteur${sectors > 1 ? "s" : ""} et ${zones} zone${zones > 1 ? "s" : ""}.`;
 }
 
 /* =====================================================================
