@@ -70,7 +70,7 @@ const Pool = {
   },
 };
 
-/* ---------- bouton « Mettre à jour » (fonction Netlify /api/mise-a-jour) ---------- */
+/* ---------- bouton « Mettre à jour » (fonction Vercel /api/mise-a-jour) ---------- */
 const Updater = {
   api: "/api/mise-a-jour", timer: null,
   async init() {
@@ -82,7 +82,7 @@ const Updater = {
     btn.addEventListener("click", () => { document.getElementById("update-error").textContent = ""; dlg.showModal(); document.getElementById("update-code").focus(); });
     document.getElementById("update-cancel").addEventListener("click", () => dlg.close());
     document.getElementById("update-form").addEventListener("submit", (e) => { e.preventDefault(); this.launch(); });
-    if (!st.configured) btn.title = "Le bouton doit encore être configuré dans Netlify";
+    if (!st.configured) btn.title = "Le bouton doit encore être configuré dans Vercel";
     if (st.run && st.run.status !== "completed") this.watch(st.run);
   },
   async launch() {
@@ -111,7 +111,7 @@ const Updater = {
       clearInterval(this.timer);
       if (r.conclusion !== "success") { this.show(`La mise à jour a échoué. <a href="${r.url}" target="_blank" rel="noopener">Voir le détail sur GitHub</a>.`); btn.disabled = false; return; }
       this.show("Collecte terminée : publication des nouvelles données sur le site…");
-      for (let k = 0; k < 20; k++) {           // Netlify republie le site en moins d'une minute en général
+      for (let k = 0; k < 20; k++) {           // Vercel republie le site en moins d'une minute en général
         await new Promise((ok) => setTimeout(ok, 15000));
         try { const s2 = await getJSON("data/sectors.json"); if (s2.updated !== before) { location.reload(); return; } } catch { /* on réessaie */ }
       }
