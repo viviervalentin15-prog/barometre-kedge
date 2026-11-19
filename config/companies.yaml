@@ -1,0 +1,75 @@
+# =====================================================================
+#  Réglages du scoring des entreprises et des secteurs
+#  ---------------------------------------------------------------
+#  Les poids se modifient ici sans toucher au code.
+#  direction : "haut"  -> plus la valeur est haute, meilleur est le score
+#              "bas"   -> plus la valeur est basse, meilleur est le score
+# =====================================================================
+
+universe:
+  # Liste du S&P 500 (Wikipédia, tenue à jour en continu)
+  sp500: true
+  # Euro Stoxx élargi : la composition officielle est réservée aux abonnés STOXX.
+  # On la reconstitue : les N plus grandes capitalisations dont le siège est dans
+  # un pays de la zone euro, cotées sur une bourse de la zone euro
+  # (l'Euro Stoxx 50 est toujours inclus).
+  eurostoxx_size: 300
+  eurostoxx_min_cap_eur: 1500000000
+  rebuild_every_days: 30
+
+# Normalisation dans le secteur : on écrête aux 5e et 95e centiles,
+# puis Min-Max sur 0-100. Un secteur avec moins de 8 entreprises
+# est comparé à l'ensemble de l'univers.
+clip_percentile: 0.05
+min_sector_size: 8
+
+families:
+  valorisation:
+    label: "Valorisation"
+    weight: 25
+    metrics:
+      pe:          { label: "PER",                         direction: bas,  unit: "x" }
+      pb:          { label: "Cours / valeur comptable",    direction: bas,  unit: "x" }
+      div_yield:   { label: "Rendement du dividende",      direction: haut, unit: "%" }
+  dynamique:
+    label: "Dynamique"
+    weight: 25
+    metrics:
+      perf_12m_ex1m: { label: "Performance 12 mois (hors dernier mois)", direction: haut, unit: "%" }
+      perf_3m:       { label: "Performance 3 mois",                      direction: haut, unit: "%" }
+      ma200_gap:     { label: "Écart à la moyenne 200 jours",            direction: haut, unit: "%" }
+  risque:
+    label: "Risque"
+    weight: 25
+    metrics:
+      vol_1y:        { label: "Volatilité sur 1 an",         direction: bas,  unit: "%" }
+      beta:          { label: "Bêta",                        direction: bas,  unit: "" }
+      debt_equity:   { label: "Dette / fonds propres",       direction: bas,  unit: "%" }
+      max_dd_1y:     { label: "Pire baisse sur 1 an",        direction: haut, unit: "%" }
+  qualite:
+    label: "Qualité"
+    weight: 25
+    metrics:
+      roe:           { label: "Rentabilité des fonds propres (ROE)", direction: haut, unit: "%" }
+      op_margin:     { label: "Marge opérationnelle",                 direction: haut, unit: "%" }
+      rev_growth:    { label: "Croissance du chiffre d'affaires",     direction: haut, unit: "%" }
+
+# Score d'un secteur = part "entreprises" + part "tendance de marché",
+# puis ajustement selon le baromètre macro.
+sector_score:
+  company_weight: 0.6     # moyenne des scores des entreprises, pondérée par la capitalisation
+  trend_weight: 0.4       # tendance de l'indice du secteur (écart MM200 et perf. 6 mois, sur 5 ans)
+  macro_tilt: 0.2         # ajustement = 0,2 x (score macro - 50) : au plus +/- 10 points
+
+sectors:
+  Technology:             { label: "Technologie",             type: cyclique }
+  Communication Services: { label: "Télécoms et médias",      type: neutre }
+  Consumer Cyclical:      { label: "Consommation cyclique",   type: cyclique }
+  Consumer Defensive:     { label: "Consommation de base",    type: defensif }
+  Healthcare:             { label: "Santé",                   type: defensif }
+  Financial Services:     { label: "Finance",                 type: cyclique }
+  Industrials:            { label: "Industrie",               type: cyclique }
+  Basic Materials:        { label: "Matériaux",               type: cyclique }
+  Energy:                 { label: "Énergie",                 type: cyclique }
+  Utilities:              { label: "Services publics",        type: defensif }
+  Real Estate:            { label: "Immobilier",              type: neutre }
