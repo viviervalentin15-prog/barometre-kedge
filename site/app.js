@@ -1390,7 +1390,7 @@ const euro = (x) => (x == null ? "–" : fmt(x, 0) + " €");
 function pfLogin(app, msg = "") {
   app.innerHTML = `<section class="card pf-login"><h2>Portefeuille</h2>
     <p class="hint">Espace privé : les lignes ne sont stockées ni dans le site ni dans le dépôt public. Saisissez le code du portefeuille.</p>
-    <form id="pf-login" class="pf-row"><input type="password" id="pf-code" placeholder="Code du portefeuille" autocomplete="current-password" required>
+    <form id="pf-login" class="pf-row"><input type="password" id="pf-code" placeholder="Code (le même que pour la mise à jour)" autocomplete="current-password" required>
     <button class="btn" type="submit">Ouvrir</button></form>${msg ? `<p class="status">${esc(msg)}</p>` : ""}</section>`;
   document.getElementById("pf-login").addEventListener("submit", (e) => { e.preventDefault(); pfCode.set(document.getElementById("pf-code").value.trim()); route(); });
   document.getElementById("pf-code").focus();

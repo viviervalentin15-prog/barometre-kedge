@@ -6,7 +6,8 @@
 // En-tête obligatoire : x-code (le code du portefeuille).
 //
 // Variables à définir dans Vercel (Project > Settings > Environment Variables) :
-//   PORTFOLIO_CODE : le code à taper sur la page Portefeuille
+//   PORTFOLIO_CODE : (facultatif) le code à taper sur la page Portefeuille ;
+//                    à défaut, c'est le code du bouton de mise à jour (UPDATE_CODE) qui sert
 //   GITHUB_TOKEN   : le même jeton que pour le bouton de mise à jour, avec en plus le droit
 //                    « Variables : Read and write » sur ce dépôt
 
@@ -75,13 +76,14 @@ function blocked(ip) {
   if (Date.now() - f.first > PENALTY_MS) { fails.delete(ip); return false; }
   return f.n >= MAX_FAILS;
 }
+const expectedCode = () => process.env.PORTFOLIO_CODE || process.env.UPDATE_CODE || "";
 function codeOk(given) {
-  const a = Buffer.from(String(given || "")), b = Buffer.from(process.env.PORTFOLIO_CODE || "");
+  const a = Buffer.from(String(given || "")), b = Buffer.from(expectedCode());
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
 async function handle(req) {
-  if (!process.env.PORTFOLIO_CODE || !process.env.GITHUB_TOKEN) return json({ error: "Portefeuille non configuré." }, 503);
+  if (!expectedCode() || !process.env.GITHUB_TOKEN) return json({ error: "Portefeuille non configuré." }, 503);
   const ip = ipOf(req);
   if (blocked(ip)) return json({ error: "Trop d'essais. Réessayez dans un quart d'heure." }, 429);
   if (!codeOk(req.headers.get("x-code"))) {

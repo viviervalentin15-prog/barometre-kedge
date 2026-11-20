@@ -44,7 +44,15 @@ r = await call("GET", { code: "abc", ip: "2.2.2.2" }); assert.equal(r.status, 20
 mem = Array.from({ length: 200 }, (_, k) => ({ id: String(k), ticker: "A", amount: 1, platform: "B", date: "2026-11-02" }));
 r = await call("POST", { body: { ticker: "TTE.PA", amount: 1, platform: "B", date: "2026-11-02" } }); assert.equal(r.status, 400);
 
-// non configuré
+// sans code propre : le code de mise à jour sert de code du portefeuille
 delete process.env.PORTFOLIO_CODE;
+process.env.UPDATE_CODE = "maj-123";
+r = await call("GET", { code: "maj-123", ip: "4.4.4.4" }); assert.equal(r.status, 200, "le code de mise à jour doit ouvrir le portefeuille");
+r = await call("GET", { code: "abc", ip: "4.4.4.5" }); assert.equal(r.status, 401);
+process.env.PORTFOLIO_CODE = "propre";
+r = await call("GET", { code: "maj-123", ip: "4.4.4.6" }); assert.equal(r.status, 401, "un code propre prend le dessus");
+
+// non configuré
+delete process.env.PORTFOLIO_CODE; delete process.env.UPDATE_CODE;
 r = await call("GET", { ip: "3.3.3.3" }); assert.equal(r.status, 503);
 console.log("portefeuille-api.test : OK");
