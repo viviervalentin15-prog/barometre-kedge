@@ -49,6 +49,69 @@ function toggleTheme() {
   route();
 }
 
+/* ---------- profils : coefficients des familles choisis par l'utilisateur ---------- */
+// Note d'une entreprise = moyenne pondérée de ses familles (familles manquantes ignorées, comme côté serveur).
+function profileScore(c, w, prefix = "f_") {
+  if (c._nd ?? c.sc == null) return null;
+  let num = 0, den = 0;
+  for (const [fid, wt] of Object.entries(w)) { const v = c[prefix + fid]; if (v != null) { num += v * wt; den += wt; } }
+  return den ? num / den : null;
+}
+// Z-score entre secteurs ramené sur 0-100 (50 + 15 x Z), comme rescale() de build_companies.py
+function rescaleZ(vals) {
+  const ok = vals.filter((v) => v != null && !Number.isNaN(v));
+  const mu = ok.reduce((s, v) => s + v, 0) / (ok.length || 1);
+  const sd = Math.sqrt(ok.reduce((s, v) => s + (v - mu) ** 2, 0) / (ok.length || 1));
+  return vals.map((v) => (sd && v != null && !Number.isNaN(v) ? Math.round(Math.min(100, Math.max(0, 50 + 15 * (v - mu) / sd)) * 10) / 10 : 50));
+}
+// Rang dans le secteur (1 = meilleure note, ex aequo au rang le plus haut)
+function rankInSector(companies) {
+  const out = {}, by = {};
+  companies.filter((c) => c.sc != null).forEach((c) => (by[c.s] ||= []).push(c));
+  for (const list of Object.values(by)) list.forEach((c) => (out[c.t] = 1 + list.filter((x) => x.sc > c.sc).length));
+  return out;
+}
+// Scores des secteurs d'une vue recalculés à partir des notes « univers » (su) des entreprises
+function sectorItems(items, companies, zones, m) {
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const comps = items.map((it) => {
+    let num = 0, den = 0;
+    companies.forEach((c) => { if (c.s === it.id && zones.includes(c.z) && c.su != null && c.cap > 0) { num += c.su * c.cap; den += c.cap; } });
+    return den ? r1(num / den) : null;
+  });
+  const norm = rescaleZ(comps);
+  return items.map((it, k) => {
+    const ranked = companies.filter((c) => c.s === it.id && zones.includes(c.z) && c.sc != null).sort((a, b) => b.sc - a.sc);
+    const brief = (c) => ({ ticker: c.t, name: c.n, score: c.sc });
+    return { ...it, company_score: comps[k], company_norm: norm[k],
+      score: r1(Math.min(100, Math.max(0, m.company_weight * norm[k] + m.trend_weight * (it.trend_norm ?? 50) + (it.macro_tilt || 0)))),
+      top: ranked.slice(0, 3).map(brief), bottom: ranked.slice(-3).reverse().map(brief) };
+  }).sort((a, b) => b.score - a.score);
+}
+function currentProfile() { return (S.companies?.profiles || []).find((p) => p.id === S.profile); }
+function applyProfile(id) {
+  const P = S.companies?.profiles || [];
+  const p = P.find((x) => x.id === id) || P.find((x) => x.id === S.companies?.default_profile) || P[0];
+  if (!p) return;
+  S.profile = p.id;
+  const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
+  for (const c of S.companies.companies) {
+    if (c._nd === undefined) c._nd = c.sc == null;
+    c.sc = r1(profileScore(c, p.weights, "f_"));
+    if (c.u_dynamique !== undefined) c.su = r1(profileScore(c, p.weights, "u_"));
+  }
+  const rk = rankInSector(S.companies.companies);
+  S.companies.companies.forEach((c) => (c.rk = rk[c.t] ?? null));
+  S.companies.families.forEach((f) => (f.weight = p.weights[f.id] ?? f.weight));
+  if (S.sectors && S.companies.companies[0]?.u_dynamique !== undefined) {
+    for (const [view, v] of Object.entries(S.sectors.views)) {
+      v._orig ||= v.sectors;
+      v.sectors = sectorItems(v._orig, S.companies.companies, VIEW_ZONES[view], S.sectors.method);
+    }
+  }
+  try { localStorage.setItem("profile", p.id); } catch { /* choix valable pour la session */ }
+}
+
 /* ---------- actualités (Google Actualités, à la demande ; hors score) ---------- */
 const NEWS = {};
 const FIN_TERMS = "(bourse OR action OR résultats OR analystes)";
@@ -288,6 +351,16 @@ async function init() {
   try { S.sectors = await getJSON("data/sectors.json"); } catch { S.sectors = null; }
   try { S.companies = await getJSON("data/companies.json"); } catch { S.companies = null; }
   try { S.analyse = await getJSON("data/analyse.json"); } catch { S.analyse = null; }
+  if (S.companies?.profiles?.length) {
+    let saved = null;
+    try { saved = localStorage.getItem("profile"); } catch { /* stockage indisponible */ }
+    applyProfile(saved);
+    const sel = document.getElementById("profile-select");
+    sel.innerHTML = S.companies.profiles.map((p) => `<option value="${esc(p.id)}" title="${esc(p.description)}">${esc(p.label)}</option>`).join("");
+    sel.value = S.profile;
+    sel.title = currentProfile()?.description || "";
+    sel.addEventListener("change", () => { applyProfile(sel.value); sel.title = currentProfile()?.description || ""; disposeCharts(); route(); });
+  } else document.getElementById("profile-box").hidden = true;
   const demo = [S.macro.demo && "baromètre macro", S.sectors?.demo && "secteurs et entreprises"].filter(Boolean);
   const banner = document.getElementById("demo-banner");
   banner.hidden = demo.length === 0;
@@ -315,6 +388,8 @@ function route() {
   const nav = { "": "home", macro: "macro", secteur: "home", entreprises: "companies", entreprise: "companies", pools: "pools", methode: "methode", portefeuille: "portefeuille" }[page];
   document.querySelectorAll(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.route === nav));
   document.getElementById("zone-switch").hidden = ["entreprise", "methode", "portefeuille"].includes(page);
+  const pb = document.getElementById("profile-box");
+  if (pb && S.companies?.profiles?.length) pb.hidden = ["macro", "methode"].includes(page);
   Pool.refresh();
   const app = document.getElementById("app");
   if (page === "macro") return pageMacro(app);
@@ -592,7 +667,13 @@ function bindPeriod(id, onChange) {
 }
 const weeksOf = (p) => PERIODS.find((x) => x[0] === p)[1];
 async function loadDetails(tickers) {
-  return Promise.all(tickers.map(async (t) => { try { return (S.detailCache[t] ||= await getJSON(`data/companies/${safeName(t)}.json`)); } catch { return null; } }));
+  return Promise.all(tickers.map(async (t) => {
+    let d;
+    try { d = (S.detailCache[t] ||= await getJSON(`data/companies/${safeName(t)}.json`)); } catch { return null; }
+    const row = S.companies?.companies.find((c) => c.t === t);
+    if (row) { d.score = row.sc; d.rank_sector = row.rk; d.score_univ = row.su; }
+    return d;
+  }));
 }
 function sectorAverage(sectorId) {
   return S.sectors?.views.commun.sectors.find((x) => x.id === sectorId);
@@ -697,7 +778,7 @@ async function pageCompany(app, ticker) {
         <tr class="sel"><td><b>${esc(d.name)}</b></td><td class="muted">${esc(d.country)}</td><td class="num">${capLabel(d.cap_usd / 1e9)}</td><td class="num">${scorePill(d.score)}</td><td class="num ${pctCls(d.perf.perf_1y)}">${signed(d.perf.perf_1y)} %</td></tr>
         ${peers.map((c) => `<tr><td><a href="#/entreprise/${encodeURIComponent(c.t)}">${esc(c.n)}</a><div class="src">${esc(c.i)}</div></td><td class="muted">${esc(c.c)}</td><td class="num">${capLabel(c.cap)}</td><td class="num">${scorePill(c.sc)}</td><td class="num ${pctCls(c.p1y)}">${signed(c.p1y)} %</td></tr>`).join("")}
         </tbody></table></div></div>
-      <div class="card"><div class="card-head"><h2>Évolution du score</h2></div><div id="c-hist" class="chart chart-sm"></div><p class="hint" id="c-hist-note"></p>
+      <div class="card"><div class="card-head"><h2>Évolution du score</h2></div><div id="c-hist" class="chart chart-sm"></div><p class="hint" id="c-hist-note"></p><p class="src">Historique calculé avec le profil par défaut (${esc((S.companies.profiles || []).find((p) => p.id === S.companies.default_profile)?.label || "")}).</p>
         ${d.summary ? `<h2 class="mt">Activité</h2><p class="muted summary">${esc(d.summary)}${d.summary.length >= 900 ? "…" : ""}</p>${d.website ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>` : ""}` : ""}</div>
     </section>
     </div>`;
@@ -874,7 +955,7 @@ async function poolReport(box, rows) {
       ${kpi("Corrélation moyenne", fmt(avgCorr, 2), "", "entre les titres, sur 1 an")}
     </section>
     <section class="grid-2">
-      <div class="card"><div class="card-head"><h2>Classement interne</h2></div><p class="hint">Score sur 100 et contribution des 4 familles (25 points chacune).</p><div id="p-rank" class="chart" style="height:${items.length * 34 + 70}px"></div></div>
+      <div class="card"><div class="card-head"><h2>Classement interne</h2></div><p class="hint">Score sur 100 et contribution des 4 familles (profil ${esc(currentProfile()?.label || "")} : ${S.companies.families.map((f) => `${f.label.toLowerCase()} ${f.weight}`).join(", ")}).</p><div id="p-rank" class="chart" style="height:${items.length * 34 + 70}px"></div></div>
       <div class="card"><div class="card-head"><h2>Profils comparés</h2></div><p class="hint">Notes par famille, relatives au secteur de chaque entreprise.</p><div id="p-radar" class="chart chart-md"></div></div>
     </section>
     <section class="card"><div class="card-head"><h2>Courbes superposées</h2>${periodButtons("p-period", "1a")}</div>
@@ -941,7 +1022,7 @@ async function poolReport(box, rows) {
   body += `<tr><td>Capitalisation</td>${items.map((x) => `<td class="num">${capLabel(x.c.cap)}</td>`).join("")}</tr>`;
   body += line("Performance 1 an", items.map((x) => x.c.p1y), items.map((x) => x.c.p1y), (v) => `<span class="${pctCls(v)}">${sp(v)}</span>`);
   fams.forEach((f) => {
-    body += group(`${f.label} (25 points)`);
+    body += group(`${f.label} (${f.weight} points)`);
     body += line(`<b>Note ${f.label.toLowerCase()}</b>`, items.map((x) => x.c["f_" + f.id]), items.map((x) => x.c["f_" + f.id]), (v) => `<b>${fmt(v, 0)}</b>`);
     f.metrics.forEach((m) => {
       body += line(`${m.label}`, items.map((x) => x.d.metrics[m.id]?.value), items.map((x) => x.d.metrics[m.id]?.score), (v) => fu(v, m.unit === "%" ? 1 : 2, m.unit));
@@ -1165,6 +1246,11 @@ async function pageMethod(app) {
     ${C ? `<div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critères</th><th>À quoi elle sert</th></tr></thead><tbody>
       ${C.families.map((f) => `<tr><td><b>${f.label}</b> (${f.weight})</td><td>${f.metrics.map((m) => g(m.label) + (m.direction === "bas" ? " ↓" : "")).join(", ")}</td><td class="src">${esc(f.description || "")}</td></tr>`).join("")}
     </tbody></table></div>` : ""}
+    ${C?.profiles?.length ? `<p><b>Profils</b> : les coefficients des familles dépendent du profil choisi dans la barre d'outils (actuellement <b>${esc(currentProfile()?.label || "")}</b>). Le site recalcule alors les notes, les rangs et les scores des secteurs ; l'historique et les tests restent calculés avec le profil par défaut.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Profil</th>${C.families.map((f) => `<th class="num">${f.label}</th>`).join("")}<th>Ce qu'il privilégie</th></tr></thead><tbody>
+      ${C.profiles.map((pr) => `<tr><td><b>${esc(pr.label)}</b>${pr.id === C.default_profile ? ' <span class="pill">par défaut</span>' : ""}</td>${C.families.map((f) => `<td class="num">${pr.weights[f.id]}</td>`).join("")}<td class="src">${esc(pr.description)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="src">Pourquoi pas des coefficients « optimisés » ? Seules la dynamique et le risque se testent sur le passé (2023-2025, une période de hausse) : plus de dynamique y donnait plus de performance, plus de risque une progression plus régulière. Ajuster finement les poids sur trois ans reviendrait à coller au passé ; d'où des profils assumés plutôt qu'un réglage unique.</p>` : ""}
     <p><b>Données manquantes</b> : un critère manquant reçoit une note neutre de 50 ; une entreprise en perte reçoit 0 sur le ${g("PER")} ; la dette des banques et les ratios des entreprises à fonds propres négatifs sont retirés ; au-delà de 3 critères manquants, l'entreprise n'est pas notée (n.d.).</p>
 
     <h2 id="m-sect">3. Score des secteurs</h2>

@@ -629,6 +629,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "s": row["sector"], "i": row["industry"], "cap": rnd(row["cap_usd"] / 1e9, 1),
             "sc": rnd(row["score"], 1), **{f"f_{fid}": rnd(row[f"f_{fid}"], 1) for fid in fams},
             "miss": int(row["n_missing"]), "loss": bool(row["loss"]), "su": rnd(row["score_univ"], 1),
+            **{f"u_{fid}": rnd(row[f"u_{fid}"], 1) for fid in fams},
             "p1y": rnd(row.get("perf_1y"), 1), "pytd": rnd(row.get("perf_ytd"), 1), "pe": rnd(row.get("pe"), 1),
             "dy": rnd(row.get("div_yield"), 2), "rk": int(row["rank_sector"]) if pd.notna(row["rank_sector"]) else None,
         })
@@ -664,7 +665,8 @@ def main(demo: bool, rebuild_universe: bool) -> None:
                                                          encoding="utf-8")
 
     common = {"updated": updated, "demo": demo, "eurusd": rnd(fx, 4),
-              "sector_labels": {k: v["label"] for k, v in sectors_cfg.items()}, "families": family_meta}
+              "sector_labels": {k: v["label"] for k, v in sectors_cfg.items()}, "families": family_meta,
+              "profiles": cfg.get("profiles", []), "default_profile": cfg.get("default_profile")}
     (SITE_DATA / "companies.json").write_text(json.dumps({**common, "companies": list_rows}, ensure_ascii=False,
                                                          separators=(",", ":")), encoding="utf-8")
     (SITE_DATA / "sectors.json").write_text(json.dumps({**common, **sector_out, "method": sc}, ensure_ascii=False,

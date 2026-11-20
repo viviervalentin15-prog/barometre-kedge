@@ -27,7 +27,7 @@ families:
   valorisation:
     label: "Valorisation"
     description: "Le prix payé : PER, cours / valeur comptable, dividende. Une note haute signale une action moins chère que ses concurrentes. Non testable sur le passé : Yahoo ne fournit pas l'historique des ratios."
-    weight: 25
+    weight: 20
     metrics:
       pe:          { label: "PER",                         direction: bas,  unit: "x" }
       pb:          { label: "Cours / valeur comptable",    direction: bas,  unit: "x" }
@@ -35,7 +35,7 @@ families:
   dynamique:
     label: "Dynamique"
     description: "La tendance du cours. C'est la famille la plus utile d'après nos tests 2023-2025 : les 20 % d'entreprises les mieux notées ont battu les 20 % les moins bien notées d'environ 7 points par an."
-    weight: 25
+    weight: 30
     metrics:
       perf_12m_ex1m: { label: "Performance 12 mois (hors dernier mois)", direction: haut, unit: "%" }
       perf_3m:       { label: "Performance 3 mois",                      direction: haut, unit: "%" }
@@ -43,7 +43,7 @@ families:
   risque:
     label: "Risque"
     description: "Un filtre défensif : volatilité, bêta, dette, pire baisse. Elle ne fait pas gagner plus (les titres les moins risqués ont moins progressé en 2023-2025, une période de forte hausse) mais réduit nettement les mauvaises surprises : 4 fois moins d'écarts de performance."
-    weight: 25
+    weight: 20
     metrics:
       vol_1y:        { label: "Volatilité sur 1 an",         direction: bas,  unit: "%" }
       beta:          { label: "Bêta",                        direction: bas,  unit: "" }
@@ -52,11 +52,28 @@ families:
   qualite:
     label: "Qualité"
     description: "La solidité de l'activité : rentabilité des fonds propres, marge, croissance du chiffre d'affaires. Non testable sur le passé faute d'historique des ratios."
-    weight: 25
+    weight: 30
     metrics:
       roe:           { label: "Rentabilité des fonds propres (ROE)", direction: haut, unit: "%" }
       op_margin:     { label: "Marge opérationnelle",                 direction: haut, unit: "%" }
       rev_growth:    { label: "Croissance du chiffre d'affaires",     direction: haut, unit: "%" }
+
+# Profils proposés sur le site (le premier est celui par défaut : il doit reprendre les poids ci-dessus).
+# Le site recalcule les notes dans le navigateur ; l'historique et les tests restent sur le profil par défaut.
+default_profile: equilibre
+profiles:
+  - id: equilibre
+    label: "Équilibré long terme"
+    description: "Privilégie la dynamique du cours et la qualité de l'activité, les deux familles les mieux étayées sur longue période ; valorisation et risque comptent moins."
+    weights: { valorisation: 20, dynamique: 30, risque: 20, qualite: 30 }
+  - id: performance
+    label: "Performance"
+    description: "Cherche les entreprises qui devraient le plus progresser : forte place à la dynamique, la seule famille au signal positif dans nos tests 2023-2025, au prix de davantage de variations."
+    weights: { valorisation: 20, dynamique: 40, risque: 15, qualite: 25 }
+  - id: prudent
+    label: "Prudent"
+    description: "Cherche le meilleur rapport entre gain et risque : forte place au risque et à la qualité. Dans nos tests, les titres retenus progressent moins mais plus régulièrement."
+    weights: { valorisation: 15, dynamique: 20, risque: 35, qualite: 30 }
 
 # Données manquantes
 #  - une valeur manquante reçoit une note neutre (la médiane du secteur = 50)
