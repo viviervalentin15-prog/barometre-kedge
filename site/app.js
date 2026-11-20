@@ -31,6 +31,8 @@ const sp = (x, d = 1) => (x == null ? "–" : signed(x, d) + " %");
 const pctCls = (x) => (x > 0 ? "up" : x < 0 ? "down" : "");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const safeName = (t) => t.replace(/[^A-Za-z0-9]/g, "_");
+/* texte sans accents ni majuscules, pour que « hermes » trouve « Hermès » */
+const norm = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const scorePill = (s) => `<span class="score-pill" style="background:${scoreColor(s)}">${fmt(s, 0)}</span>`;
 /* score d'une entreprise de la liste : n.d. si données insuffisantes, * si des critères manquants ont reçu une note neutre */
 function companyScore(c) {
@@ -121,6 +123,63 @@ const Updater = {
   },
 };
 
+/* ---------- onglets ---------- */
+function bindTabs(id) {
+  const bar = document.getElementById(id);
+  const show = (tab) => {
+    bar.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+    document.querySelectorAll(".tab-panel").forEach((p) => (p.hidden = p.dataset.panel !== tab));
+    S.companyTab = tab;
+    Object.values(S.charts).forEach((c) => c.resize());   // les graphiques d'un onglet caché ont une taille nulle
+  };
+  bar.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
+  if (S.companyTab && S.companyTab !== "synthese") setTimeout(() => show(S.companyTab), 0);
+}
+
+/* ---------- lexique : info-bulles sur le jargon ---------- */
+const GLOSSARY = {
+  "PER prévisionnel": "Cours divisé par le bénéfice par action attendu sur les 12 prochains mois.",
+  "PER": "Price Earning Ratio : cours de l'action divisé par le bénéfice par action. Combien d'années de bénéfices on paie.",
+  "VE / EBITDA": "Valeur de l'entreprise (capitalisation + dette nette) divisée par l'excédent brut d'exploitation. Valorisation indépendante de la structure financière.",
+  "Bêta": "Sensibilité de l'action aux mouvements du marché : 1 = comme le marché, 1,5 = 50 % plus amplifié.",
+  "Volatilité": "Ampleur moyenne des variations du cours sur un an, annualisée. Mesure du risque.",
+  "ROE": "Return On Equity : bénéfice net divisé par les fonds propres. Rentabilité de l'argent des actionnaires.",
+  "Min-Max": "Normalisation qui ramène une série entre 0 et 100 : (valeur − minimum) / (maximum − minimum).",
+  "Z-score": "Écart à la moyenne mesuré en nombre d'écarts-types.",
+  "note de prédictivité": "Part de bonnes prévisions du modèle sur le passé, testé sans connaître la suite. 50 % = hasard.",
+  "Note de prédictivité": "Part de bonnes prévisions du modèle sur le passé, testé sans connaître la suite. 50 % = hasard.",
+  "EWMA": "Moyenne mobile exponentielle : la volatilité récente pèse plus que l'ancienne (méthode RiskMetrics).",
+  "momentum": "Tendance du cours : les actions qui ont monté ont tendance à continuer quelque temps.",
+  "Monte-Carlo": "Simulation de milliers de scénarios tirés au hasard à partir des rendements passés.",
+  "MM200": "Moyenne mobile sur 200 jours de bourse, environ 10 mois : repère de la tendance de fond.",
+  "VIX": "Indice de volatilité implicite du S&P 500, calculé à partir du prix des options : la « peur » du marché.",
+};
+function g(text) {
+  let out = esc(text);
+  for (const [term, def] of Object.entries(GLOSSARY)) {
+    const re = new RegExp(`(^|[^\\wÀ-ÿ>])(${term.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")})(?![\\wÀ-ÿ])`);
+    if (re.test(out)) { out = out.replace(re, `$1<abbr class="g" title="${esc(def)}">$2</abbr>`); break; }
+  }
+  return out;
+}
+
+/* ---------- recherche d'entreprise dans l'en-tête ---------- */
+function initHeaderSearch() {
+  const input = document.getElementById("hsearch"), box = document.getElementById("hsuggest");
+  if (!input || !S.companies) { if (input) input.parentElement.hidden = true; return; }
+  const go = (t) => { box.hidden = true; input.value = ""; input.blur(); location.hash = "#/entreprise/" + encodeURIComponent(t); };
+  input.addEventListener("input", () => {
+    const q = norm(input.value.trim());
+    if (q.length < 2) { box.hidden = true; return; }
+    const hits = S.companies.companies.filter((c) => norm(c.n).includes(q) || c.t.toLowerCase().startsWith(q)).slice(0, 8);
+    box.innerHTML = hits.map((c) => `<div data-t="${esc(c.t)}"><b>${esc(c.n)}</b> <span class="src">${esc(c.t)} · ${esc(sectorLabel(c.s))}</span></div>`).join("") || '<div class="src">Aucun résultat</div>';
+    box.hidden = false;
+    box.querySelectorAll("div[data-t]").forEach((el) => el.addEventListener("mousedown", () => go(el.dataset.t)));
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { const first = box.querySelector("div[data-t]"); if (first) go(first.dataset.t); } if (e.key === "Escape") box.hidden = true; });
+  input.addEventListener("blur", () => setTimeout(() => (box.hidden = true), 150));
+}
+
 /* ---------- démarrage ---------- */
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
@@ -150,22 +209,32 @@ async function init() {
   Pool.load();
   route();
   Updater.init();
+  initHeaderSearch();
 }
 
 function route() {
   disposeCharts();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = parts[0] || "";
-  const nav = { "": "home", macro: "macro", secteur: "home", entreprises: "companies", entreprise: "companies", pools: "pools" }[page];
+  const nav = { "": "home", macro: "macro", secteur: "home", entreprises: "companies", entreprise: "companies", pools: "pools", methode: "methode" }[page];
   document.querySelectorAll(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.route === nav));
-  document.getElementById("zone-switch").style.visibility = page === "entreprise" ? "hidden" : "visible";
+  document.getElementById("zone-switch").hidden = page === "entreprise" || page === "methode";
   Pool.refresh();
   const app = document.getElementById("app");
   if (page === "macro") return pageMacro(app);
   if (page === "secteur") return pageSector(app, parts[1]);
   if (page === "entreprises") return pageCompanies(app);
   if (page === "entreprise") return pageCompany(app, parts[1]);
-  if (page === "pools") return pagePools(app);
+  if (page === "pools") {
+    if (parts[1]) {   // lien partagé : #/pools/MC.PA,RMS.PA,...
+      const known = new Set((S.companies?.companies || []).map((c) => c.t));
+      const shared = parts[1].split(",").map((t) => t.trim()).filter((t) => known.has(t));
+      if (shared.length) { Pool.items = new Set(shared); Pool.save(); S.sharedNotice = shared.length; }
+      history.replaceState(null, "", "#/pools");
+    }
+    return pagePools(app);
+  }
+  if (page === "methode") return pageMethod(app);
   return pageHome(app);
 }
 
@@ -308,7 +377,7 @@ function familyGuide() {
   return `<section class="fam-guide">${fams.map((f, k) => `<div class="card fam-card"><div class="fam-name"><i style="background:${["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k]}"></i>${f.label} · ${f.weight} points</div><p>${esc(f.description || "")}</p></div>`).join("")}</section>`;
 }
 
-function kpi(label, value, cls = "", sub = "") { return `<div class="card kpi"><div class="label">${label}</div><div class="kpi-value ${cls}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`; }
+function kpi(label, value, cls = "", sub = "") { return `<div class="card kpi"><div class="label">${g(label)}</div><div class="kpi-value ${cls}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`; }
 
 /* =====================================================================
    LISTE DES ENTREPRISES (page globale et page secteur)
@@ -351,8 +420,8 @@ function companyTable(box, fixed) {
     const k = th.dataset.k; st.dir = st.sort === k ? -st.dir : (["n", "s", "i", "c"].includes(k) ? 1 : -1); st.sort = k; companyTable(box, fixed);
   }));
   const draw = () => {
-    const q = st.q.toLowerCase();
-    const rows = base.filter((c) => (!q || c.n.toLowerCase().includes(q) || c.t.toLowerCase().includes(q))
+    const q = norm(st.q);
+    const rows = base.filter((c) => (!q || norm(c.n).includes(q) || c.t.toLowerCase().includes(q))
       && (!st.sector || c.s === st.sector) && (!st.industry || c.i === st.industry) && (!st.country || c.c === st.country)
       && (st.min === 0 || (c.sc ?? -1) >= st.min) && inSize(c.cap, st.size));
     rows.sort((a, b) => {
@@ -454,7 +523,7 @@ function corr(a, b) {
 async function pageCompany(app, ticker) {
   app.innerHTML = '<div class="card">Chargement…</div>';
   const [d] = await loadDetails([ticker]);
-  await loadPredictions();
+  await loadPredictions([ticker]);
   if (!d) { app.innerHTML = '<div class="card">Entreprise introuvable. <a href="#/entreprises">Retour</a></div>'; return; }
   const fams = S.companies.families;
   const cur = d.currency === "EUR" ? "€" : d.currency === "USD" ? "$" : d.currency;
@@ -476,6 +545,11 @@ async function pageCompany(app, ticker) {
     </section>
     ${d.score == null ? `<div class="banner">Score non calculé : ${d.n_missing} critères sur 13 sont manquants chez Yahoo Finance (entreprise récemment cotée ou données incomplètes). Les critères disponibles restent affichés.</div>`
       : d.n_missing || d.loss ? `<div class="banner info">${d.n_missing ? `${d.n_missing} critère${d.n_missing > 1 ? "s" : ""} manquant${d.n_missing > 1 ? "s" : ""} : note neutre de 50 appliquée, pour ne pas avantager ni pénaliser l'entreprise. ` : ""}${d.loss ? "L'entreprise est en perte : son PER n'existe pas et reçoit la note 0." : ""}</div>` : ""}
+    <nav class="tabs" id="c-tabs">
+      <button data-tab="synthese" class="on">Synthèse</button><button data-tab="previsions">Prévisions</button>
+      <button data-tab="criteres">Critères</button><button data-tab="concurrents">Concurrents et activité</button>
+    </nav>
+    <div class="tab-panel" data-panel="synthese">
     <section class="kpis">
       ${kpi("Cours", fmt(d.price, 2) + " " + cur)}
       ${kpi("Capitalisation", capLabel(d.cap_usd / 1e9))}
@@ -492,13 +566,15 @@ async function pageCompany(app, ticker) {
       ${kpi("Marge nette", fu(d.net_margin, 1, "%"))}
       ${kpi("Salariés", d.employees ? Number(d.employees).toLocaleString("fr-FR") : "–")}
     </section>
-    ${predictionSection(d.ticker)}
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Performance comparée</h2>${periodButtons("c-period", "1a")}</div>
         <p class="hint">Base 100 au début de la période : l'entreprise, son secteur et ${bench ? bench.name : "le marché"}.</p><div id="c-perf" class="chart chart-md"></div></div>
       <div class="card"><div class="card-head"><h2>Profil face au secteur</h2></div>
         <p class="hint">Notes sur 100 par famille : l'entreprise et la moyenne de son secteur.</p><div id="c-fams" class="chart chart-md"></div></div>
     </section>
+    </div>
+    <div class="tab-panel" data-panel="previsions" hidden>${predictionSection(d.ticker) || '<div class="card hint">Prévisions indisponibles pour cette entreprise.</div>'}</div>
+    <div class="tab-panel" data-panel="criteres" hidden>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Position dans le secteur</h2></div>
         <p class="hint">Chaque point est une entreprise du secteur ${esc(d.sector_label)}, placée selon son score et sa capitalisation.</p><div id="c-pos" class="chart chart-md"></div></div>
@@ -508,10 +584,12 @@ async function pageCompany(app, ticker) {
     <section class="card"><div class="card-head"><h2>Détail des critères</h2></div>
       <div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critère</th><th class="num">Valeur</th><th class="num">Médiane du secteur</th><th class="num">Note /100</th></tr></thead>
       <tbody>${fams.map((f) => f.metrics.map((m, k) => { const x = d.metrics[m.id] || {}; return `<tr>
-        <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${m.label}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
+        <td>${k === 0 ? `<b>${f.label}</b> ${scorePill(d.families[f.id])}` : ""}</td><td>${g(m.label)}${m.direction === "bas" ? ' <span class="src">(plus bas = mieux)</span>' : ""}</td>
         <td class="num">${x.status && x.status !== "ok" ? `<span class="status">${STATUS_LABEL[x.status] || x.status}</span>` : fu(x.value, 2, m.unit)}</td><td class="num muted">${fu(x.sector_median, 2, m.unit)}</td><td class="num">${x.status === "non applicable" || x.status === "fonds propres négatifs" ? "–" : scorePill(x.score)}</td></tr>`; }).join("")).join("")}</tbody></table></div>
     </section>
     ${familyGuide()}
+    </div>
+    <div class="tab-panel" data-panel="concurrents" hidden>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
         <p class="hint">Même sous-industrie en priorité, puis même secteur, taille comparable.</p>
@@ -521,7 +599,9 @@ async function pageCompany(app, ticker) {
         </tbody></table></div></div>
       <div class="card"><div class="card-head"><h2>Évolution du score</h2></div><div id="c-hist" class="chart chart-sm"></div><p class="hint" id="c-hist-note"></p>
         ${d.summary ? `<h2 class="mt">Activité</h2><p class="muted summary">${esc(d.summary)}${d.summary.length >= 900 ? "…" : ""}</p>${d.website ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>` : ""}` : ""}</div>
-    </section>`;
+    </section>
+    </div>`;
+  bindTabs("c-tabs");
 
   document.getElementById("add-pool").addEventListener("change", (e) => Pool.toggle(d.ticker, e.target.checked));
   document.getElementById("cmp-peers").addEventListener("click", () => {
@@ -614,6 +694,7 @@ async function pagePools(app) {
         <button class="btn" id="pool-save" ${rows.length ? "" : "disabled"}>Enregistrer</button>
         ${rows.length ? '<button class="btn ghost" id="pool-clear-2">Vider</button>' : ""}
         <button class="btn ghost" id="pool-print" ${rows.length >= 2 ? "" : "disabled"}>Imprimer le rapport</button>
+        <button class="btn ghost" id="pool-share" ${rows.length ? "" : "disabled"}>Copier le lien de partage</button>
       </div>
       <div class="chips">${rows.map((c, k) => `<span class="chip"><i style="background:${PALETTE[k % PALETTE.length]}"></i>${esc(shortName(c.n))}<button data-t="${esc(c.t)}" title="Retirer">×</button></span>`).join("") || '<span class="hint">Aucune entreprise : cherchez-en une ci-dessus, ou cochez-en dans la <a href="#/entreprises">liste</a>.</span>'}</div>
       ${Object.keys(saved).length ? `<div class="saved"><span class="hint">Pools enregistrés :</span> ${Object.entries(saved).map(([n, ts]) => `<span class="chip saved-chip"><a href="#" data-load="${esc(n)}">${esc(n)} (${ts.length})</a><button data-del="${esc(n)}" title="Supprimer">×</button></span>`).join("")}</div>` : ""}
@@ -623,9 +704,9 @@ async function pagePools(app) {
   // Gestion du pool
   const search = document.getElementById("pool-search"), sug = document.getElementById("pool-suggest");
   search.addEventListener("input", () => {
-    const q = search.value.trim().toLowerCase();
+    const q = norm(search.value.trim());
     if (q.length < 2) { sug.hidden = true; return; }
-    const hits = S.companies.companies.filter((c) => !Pool.items.has(c.t) && (c.n.toLowerCase().includes(q) || c.t.toLowerCase().startsWith(q))).slice(0, 8);
+    const hits = S.companies.companies.filter((c) => !Pool.items.has(c.t) && (norm(c.n).includes(q) || c.t.toLowerCase().startsWith(q))).slice(0, 8);
     sug.innerHTML = hits.map((c) => `<div data-t="${esc(c.t)}"><b>${esc(c.n)}</b> <span class="src">${esc(c.t)} · ${esc(sectorLabel(c.s))}</span></div>`).join("") || '<div class="src">Aucun résultat</div>';
     sug.hidden = false;
     sug.querySelectorAll("div[data-t]").forEach((el) => el.addEventListener("mousedown", () => { Pool.toggle(el.dataset.t, true); route(); }));
@@ -634,6 +715,11 @@ async function pagePools(app) {
   app.querySelectorAll(".chips button[data-t]").forEach((b) => b.addEventListener("click", () => { Pool.toggle(b.dataset.t, false); route(); }));
   document.getElementById("pool-clear-2")?.addEventListener("click", () => Pool.clear());
   document.getElementById("pool-print")?.addEventListener("click", () => window.print());
+  document.getElementById("pool-share")?.addEventListener("click", async (e) => {
+    const url = `${location.origin}${location.pathname}#/pools/${[...Pool.items].map(encodeURIComponent).join(",")}`;
+    try { await navigator.clipboard.writeText(url); e.target.textContent = "Lien copié ✓"; } catch { prompt("Copiez ce lien :", url); }
+  });
+  if (S.sharedNotice) { app.querySelector(".pool-manager").insertAdjacentHTML("afterbegin", `<div class="banner info">Pool partagé chargé : ${S.sharedNotice} entreprises.</div>`); S.sharedNotice = 0; }
   document.getElementById("pool-save").addEventListener("click", () => {
     const name = document.getElementById("pool-name").value.trim() || `Pool du ${new Date().toLocaleDateString("fr-FR")}`;
     SavedPools.save(name, [...Pool.items]); route();
@@ -646,7 +732,7 @@ async function pagePools(app) {
 
 async function poolReport(box, rows) {
   const details = await loadDetails(rows.map((c) => c.t));
-  await loadPredictions();
+  await loadPredictions(rows.map((c) => c.t));
   const items = rows.map((c, k) => ({ c, d: details[k], nm: shortName(c.n), color: PALETTE[k % PALETTE.length] })).filter((x) => x.d);
   const fams = S.companies.families;
   const avg = (f) => { const v = items.map(f).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
@@ -801,8 +887,11 @@ function diversificationText(poolVol, avgVol, avgCorr, items) {
 /* =====================================================================
    PRÉVISIONS (séparées du score) : data/predictions.json (scripts/build_predictions.py)
    ===================================================================== */
-async function loadPredictions() {
-  if (S.pred === undefined) { try { S.pred = await getJSON("data/predictions.json"); } catch { S.pred = null; } }
+async function loadPredictions(tickers = []) {
+  if (S.pred === undefined) { try { S.pred = await getJSON("data/predictions/meta.json"); S.pred.companies = {}; } catch { S.pred = null; } }
+  if (S.pred) await Promise.all(tickers.filter((t) => !(t in S.pred.companies)).map(async (t) => {
+    try { S.pred.companies[t] = await getJSON(`data/predictions/${safeName(t)}.json`); } catch { S.pred.companies[t] = null; }
+  }));
   return S.pred;
 }
 const probColor = (p) => (p == null ? "#8a8f98" : p >= 0.55 ? "#1f8a5b" : p >= 0.52 ? "#5fae7e" : p > 0.48 ? "#8a8f98" : p > 0.45 ? "#c27c0e" : "#c0392b");
@@ -820,14 +909,14 @@ function predictionSection(t) {
       <div class="pred-p" style="color:${probColor(x.p)}">${pct(x.p)}</div>
       <div class="hint">de chances de faire mieux que son secteur</div>
       <div class="pred-meta">
-        <span title="Part de bonnes prévisions des modèles sur le passé, testés hors échantillon">Note de prédictivité <b>${pct(x.fiabilite, 1)}</b></span>
+        <span>${g("Note de prédictivité")} <b>${pct(x.fiabilite, 1)}</b></span>
         <span title="Nombre de modèles qui voient l'entreprise faire mieux que son secteur">Modèles favorables <b>${x.favorables} / ${x.nb_modeles}</b></span>
         ${x.cone ? `<span title="Fourchette dans laquelle le cours devrait se trouver 8 fois sur 10">Fourchette de cours <b>${spct(x.cone.q10)} à ${spct(x.cone.q90)}</b></span>` : ""}
       </div></div>`;
   };
   const modelRows = P.models.map((m) => `<tr><td>${m.label}<div class="src">${m.type === "cours" ? "20 ans de cours" : "comptes annuels"}</div></td>
-    ${H.map((h) => { const x = c.h[h.id].models.find((y) => y.id === m.id) || {}; const w = P.weights[h.id][m.id];
-      return `<td class="num"><b style="color:${probColor(x.p)}">${pct(x.p)}</b><div class="src">fiabilité ${pct(x.acc, 1)}${x.oos === false ? "*" : ""}${w === 0 ? " · non retenu" : ""}</div></td>`; }).join("")}</tr>`).join("");
+    ${H.map((h) => { const x = c.h[h.id].models.find((y) => y.id === m.id) || {}; const w = P.weights[h.id][m.id]; const st = P.stats[h.id][m.id] || {};
+      return `<td class="num"><b style="color:${probColor(x.p)}">${pct(x.p)}</b><div class="src">fiabilité ${pct(st.acc, 1)}${st.hors_echantillon === false ? "*" : ""}${w === 0 ? " · non retenu" : ""}</div></td>`; }).join("")}</tr>`).join("");
   return `<section class="card pred">
     <div class="card-head"><h2>Prévisions</h2><span class="pill">séparées du score</span></div>
     <p class="hint">${P.question} dans 6 mois, 1 an et 3 ans. Chaque modèle a été testé sur le passé (${P.periode[0]} – ${P.periode[1]}) sans connaître la suite ; la <b>note de prédictivité</b> est sa part de bonnes prévisions. En finance, 53 à 56 % est déjà un bon résultat.</p>
@@ -946,6 +1035,67 @@ function drawRecession() {
     series: [{ type: "line", symbol: "none", data: r.prob, lineStyle: { color: "#c0392b", width: 2 }, itemStyle: { color: "#c0392b" },
       markArea: { silent: true, itemStyle: { color: "rgba(22,32,46,.08)" }, data: areas } }],
   });
+}
+
+
+/* =====================================================================
+   MÉTHODE : tout ce qu'il faut pour comprendre (et rédiger le PDF)
+   ===================================================================== */
+async function pageMethod(app) {
+  await loadPredictions();
+  const M = S.macro, C = S.companies, P = S.pred, A = S.analyse, sm = S.sectors?.method;
+  const pl = Object.fromEntries(M.pillars.map((p) => [p.id, p]));
+  const methodLabel = { minmax: "haut = bon", minmax_inverse: "inversé (risque)", target: "écart à la cible de 2 %" };
+  const us = A?.macro?.US?.site;
+  app.innerHTML = `
+  <section class="card method-page">
+    <h1>Méthode</h1>
+    <p class="lead">Le site note l'état du marché à trois niveaux : l'économie (baromètre macro), les 11 secteurs et ~${C ? C.companies.length : 790} entreprises du S&P 500 et de l'Euro Stoxx. Les <b>prévisions</b> sont calculées à part et ne modifient jamais les scores. Toutes les données sont publiques et collectées automatiquement chaque lundi (ou avec le bouton « Mettre à jour »).</p>
+    <nav class="toc"><a href="#m-macro">Baromètre</a><a href="#m-ent">Entreprises</a><a href="#m-sect">Secteurs</a><a href="#m-prev">Prévisions</a><a href="#m-tests">Tests</a><a href="#m-lim">Limites</a><a href="#m-lex">Lexique</a></nav>
+
+    <h2 id="m-macro">1. Baromètre macro</h2>
+    <p>${M.indicators.length} indicateurs, regroupés en 4 piliers (grille du cours : ${M.pillars.map((p) => `${p.label.toLowerCase()} ${p.weight} %`).join(", ")}). Chaque indicateur est ramené entre 0 et 100 par un ${g("Min-Max")} <b>en temps réel</b> : à chaque date, seuls les chiffres déjà connus servent au calcul (les 2 % de valeurs extrêmes sont écrêtées). Les indicateurs de risque sont inversés et l'inflation est notée selon son écart à la cible de 2 %. On fait la moyenne pondérée par pilier, puis des piliers. Un ${g("Z-score")} est calculé en parallèle comme test de robustesse.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Indicateur</th><th>Zone</th><th>Pilier</th><th class="num">Poids</th><th>Notation</th><th>Source</th><th>Dernière donnée</th></tr></thead><tbody>
+      ${M.indicators.map((i) => `<tr><td>${g(i.name)}</td><td>${ZONE_LABEL[i.zone]}</td><td>${pl[i.pillar].label}</td><td class="num">${i.weight}</td><td>${methodLabel[i.method]}</td><td class="src">${esc(i.source)}</td><td>${i.last_obs || "–"}</td></tr>`).join("")}
+    </tbody></table></div>
+    ${M.recession ? `<p>À part du score : la <b>probabilité de récession</b> américaine à 12 mois, modèle de la Fed de New York (Estrella et Mishkin) : P = N(−0,5333 − 0,6330 × écart de taux 10 ans – 3 mois).</p>` : ""}
+
+    <h2 id="m-ent">2. Score des entreprises</h2>
+    <p>Univers : le S&P 500 (liste Wikipédia) et l'Euro Stoxx reconstitué (l'Euro Stoxx 50 plus les plus grandes capitalisations des 11 pays de l'indice, une cotation par entreprise), reconstruit chaque mois. Cours et ratios : Yahoo Finance. Chaque critère est noté <b>par rapport aux entreprises du même secteur</b> (écrêtage aux 5e et 95e centiles, puis Min-Max), puis regroupé en 4 familles de 25 points.</p>
+    ${C ? `<div class="table-wrap"><table class="table"><thead><tr><th>Famille</th><th>Critères</th><th>À quoi elle sert</th></tr></thead><tbody>
+      ${C.families.map((f) => `<tr><td><b>${f.label}</b> (${f.weight})</td><td>${f.metrics.map((m) => g(m.label) + (m.direction === "bas" ? " ↓" : "")).join(", ")}</td><td class="src">${esc(f.description || "")}</td></tr>`).join("")}
+    </tbody></table></div>` : ""}
+    <p><b>Données manquantes</b> : un critère manquant reçoit une note neutre de 50 ; une entreprise en perte reçoit 0 sur le ${g("PER")} ; la dette des banques et les ratios des entreprises à fonds propres négatifs sont retirés ; au-delà de 3 critères manquants, l'entreprise n'est pas notée (n.d.).</p>
+
+    <h2 id="m-sect">3. Score des secteurs</h2>
+    <p>${sm ? `${fmt(sm.company_weight * 100, 0)} % note des entreprises (critères comparés à <b>tout l'univers</b>, pour pouvoir comparer les secteurs entre eux), ${fmt(sm.trend_weight * 100, 0)} % tendance de marché (écart à la ${g("MM200")} et performance sur 6 mois de l'indice équipondéré du secteur, sur 5 ans), plus un ajustement macro de ${fmt(sm.macro_tilt, 1)} × (score macro − 50), positif pour les secteurs cycliques, négatif pour les défensifs.` : ""}</p>
+
+    <h2 id="m-prev">4. Prévisions (séparées du score)</h2>
+    ${P ? `<p>Question posée à chaque modèle : « ${P.question} » à 6 mois, 1 an et 3 ans. Chaque modèle transforme un classement dans le secteur en probabilité par une régression logistique apprise <b>uniquement sur des dates passées dont le résultat était connu</b>, puis il est testé sur la suite. La ${g("note de prédictivité")} est sa part de bonnes prévisions sur ${P.periode[0]} – ${P.periode[1]}. La synthèse pondère les modèles par leur pouvoir prédictif mesuré (AUC − 0,5) ; un modèle sans pouvoir prédictif n'est pas retenu. Le cône de cours utilise une volatilité ${g("EWMA")} ; la simulation des pools est un ${g("Monte-Carlo")} par blocs de 4 semaines.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Modèle</th>${P.horizons.map((h) => `<th class="num">${h.label}</th>`).join("")}</tr></thead><tbody>
+      ${P.models.map((m) => `<tr><td>${g(m.label)}<div class="src">${m.type === "cours" ? "20 ans de cours" : "comptes annuels (4-5 ans)"}</div></td>${P.horizons.map((h) => { const st = P.stats[h.id][m.id] || {}; return `<td class="num">${pct(st.acc, 1)}${st.hors_echantillon === false ? "*" : ""}<div class="src">${P.weights[h.id][m.id] ? "retenu" : "non retenu"}</div></td>`; }).join("")}</tr>`).join("")}
+    </tbody></table></div><p class="src">* mesuré dans l'échantillon faute de recul : optimiste, compté pour moitié.</p>` : "<p>Prévisions indisponibles.</p>"}
+
+    <h2 id="m-tests">5. Ce que montrent les tests sur le passé</h2>
+    ${us ? `<div class="table-wrap"><table class="table"><thead><tr><th>S&P 500, ${M.dates[0].slice(0, 4)}-${M.dates.at(-1).slice(0, 4)}</th><th class="num">Rendement annuel</th><th class="num">Volatilité</th><th class="num">Pire baisse</th><th class="num">Rendement / risque</th></tr></thead><tbody>
+      ${[["Toujours investi", "achat_conservation"], ["Investi si score ≥ 45", "investi_si_score_45"], ["Investi si score ≥ 55", "investi_si_score_55"]].map(([l, k]) => { const x = us.strategies[k]; return `<tr><td>${l}</td><td class="num">${fmt(x.rendement_annuel)} %</td><td class="num">${fmt(x.volatilite)} %</td><td class="num">${fmt(x.pire_baisse)} %</td><td class="num">${fmt(x.ratio_rendement_risque, 2)}</td></tr>`; }).join("")}
+    </tbody></table></div>
+    <p>Le niveau du baromètre prédit mal les hausses (corrélation ${fmt(us.correlation_score_perf12m, 2)} avec la performance à 12 mois) ; sa tendance sur 3 mois est plus parlante (${fmt(us.correlation_variation3m_perf12m, 2)}). C'est surtout un <b>filtre de risque</b>.</p>` : ""}
+    ${A?.entreprises ? `<p>Entreprises (${A.entreprises.periode?.join(" – ")}) : écart de performance à 12 mois entre les 20 % les mieux et les moins bien notées — dynamique ${fmt(A.entreprises.dynamique.ecart_quintiles_perf12m)} points, risque ${fmt(A.entreprises.risque.ecart_quintiles_perf12m)} points (mais dispersion ${fmt(A.entreprises.risque.dispersion_top)} % contre ${fmt(A.entreprises.risque.dispersion_bas)} %).</p>` : ""}
+
+    <h2 id="m-lim">6. Limites</h2>
+    <ul>
+      <li>Univers d'aujourd'hui : les entreprises sorties des indices manquent aux tests (biais du survivant).</li>
+      <li>Euro Stoxx reconstitué : la composition officielle est réservée aux abonnés STOXX.</li>
+      <li>Yahoo Finance est une source non officielle ; en cas de panne, la dernière version valide est conservée et signalée.</li>
+      <li>Délais de publication des chiffres macro non modélisés ; indices sans dividendes ; poids choisis par le groupe.</li>
+      <li>Seulement 4-5 ans de comptes annuels : les prévisions fondées sur les comptes à 3 ans sont peu testées.</li>
+      <li>Projet étudiant : rien sur ce site n'est un conseil en investissement.</li>
+    </ul>
+
+    <h2 id="m-lex">7. Lexique</h2>
+    <dl class="lexique">${Object.entries(GLOSSARY).filter(([k]) => !/^Note de/.test(k)).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+  </section>`;
 }
 
 /* =====================================================================

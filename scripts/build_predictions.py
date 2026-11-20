@@ -414,8 +414,25 @@ def run(demo: bool) -> None:
         "drift": {z: rnd(v) for z, v in drift.items()},
         "companies": companies,
     }
-    OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    write_split(out)
     log(f"Prévisions écrites pour {len(companies)} entreprises")
+
+
+def write_split(out: dict) -> None:
+    """Un petit fichier par entreprise (chargé seulement quand on ouvre sa fiche ou un pool)
+    + un fichier commun (modèles, fiabilités, horizons). Bien plus léger qu'un seul gros fichier."""
+    import re
+    folder = DATA / "predictions"
+    folder.mkdir(parents=True, exist_ok=True)
+    for f in folder.glob("*.json"):
+        f.unlink()
+    for t, c in out["companies"].items():
+        slim = {"vol": c["vol"], "h": {h: {**v, "models": [{"id": m["id"], "p": m["p"]} for m in v["models"]]} for h, v in c["h"].items()}}
+        (folder / f"{re.sub(r'[^A-Za-z0-9]', '_', t)}.json").write_text(json.dumps(slim, separators=(",", ":")), encoding="utf-8")
+    meta = {k: v for k, v in out.items() if k != "companies"}
+    (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    if OUT.exists():
+        OUT.unlink()
 
 
 def _xy(snapshots, ks, mid, h):

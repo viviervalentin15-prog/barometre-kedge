@@ -249,3 +249,46 @@ dialog#update-dialog input { font: inherit; padding: 8px 10px; border: 1px solid
 .pred-meta b { color: var(--ink); }
 .pred-detail { margin-top: 6px; }
 @media (max-width: 900px) { .pred-grid { grid-template-columns: 1fr; } }
+
+/* ---------- onglets, recherche, lexique, méthode ---------- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button { border: 0; background: transparent; padding: 10px 14px; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-panel { display: flex; flex-direction: column; gap: 20px; }
+.tab-panel[hidden] { display: none; }
+abbr.g { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; cursor: help; }
+.hsearch { position: relative; flex: 0 1 280px; }
+.hsearch input { width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.hsearch[hidden] { display: none; }
+#zone-switch[hidden] { display: none; }
+.method-page h1 { margin: 0 0 8px; font-size: 26px; }
+.method-page h2 { margin: 26px 0 8px; font-size: 18px; scroll-margin-top: 80px; }
+.method-page p, .method-page li { font-size: 14px; line-height: 1.65; }
+.method-page .lead { font-size: 15px; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.toc a { font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; }
+.lexique { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px; font-size: 14px; }
+.lexique dt { font-weight: 600; } .lexique dd { margin: 0; color: var(--muted); }
+
+/* ---------- corrections téléphone ---------- */
+.grid-2 > *, .hero > *, .home-top > *, .pred-grid > *, .kpis > *, .sector-grid > * { min-width: 0; }
+@media (max-width: 700px) {
+  .topbar { padding: 10px 14px; gap: 10px; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .brand { font-size: 15px; } .brand-sub { display: none; }
+  .hsearch { order: 3; flex: 1 1 100%; }
+  .nav { order: 2; overflow-x: auto; flex-wrap: nowrap; max-width: 100%; }
+  .nav-link { white-space: nowrap; padding: 6px 9px; font-size: 13px; }
+  .page { padding: 14px 12px 120px; gap: 14px; }
+  .card { padding: 14px; }
+  .toolbar { gap: 8px; }
+  .segmented button { padding: 6px 9px; font-size: 13px; }
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 18px; }
+  .sector-head h1 { font-size: 20px; }
+  .big-score { font-size: 40px; }
+  .add-box, .add-box input, .pool-tools input[type=text], .filters input[type=search] { min-width: 0; width: 100%; flex: 1 1 100%; }
+  .pool-bar { left: 8px; right: 8px; transform: none; bottom: 8px; font-size: 13px; padding: 8px 10px; gap: 8px; justify-content: space-between; }
+  .pool-bar .btn { padding: 6px 10px; font-size: 13px; }
+  .lexique { grid-template-columns: 1fr; }
+  .pred-p { font-size: 28px; }
+}
