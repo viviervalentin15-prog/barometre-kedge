@@ -40,14 +40,14 @@ export const _store = {
   async read() {
     const r = await github(`/actions/variables/${VAR}`);
     if (r.status === 404) return [];
-    if (!r.ok) throw new Error(`lecture GitHub ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(`lecture GitHub ${r.status}`), { gh: r.status });
     try { const v = JSON.parse((await r.json()).value); return Array.isArray(v) ? v : []; } catch { return []; }
   },
   async write(items) {
     const value = JSON.stringify(items);
     let r = await github(`/actions/variables/${VAR}`, { method: "PATCH", body: JSON.stringify({ name: VAR, value }) });
     if (r.status === 404) r = await github(`/actions/variables`, { method: "POST", body: JSON.stringify({ name: VAR, value }) });
-    if (!r.ok) throw new Error(`écriture GitHub ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(`écriture GitHub ${r.status}`), { gh: r.status });
   },
 };
 
@@ -111,8 +111,10 @@ async function handle(req) {
       return json({ items });
     }
     return json({ error: "Méthode non prise en charge." }, 405);
-  } catch {
-    return json({ error: "Stockage GitHub indisponible. Vérifiez le droit « Variables » du jeton." }, 502);
+  } catch (e) {
+    console.error("portefeuille :", e.message);   // statut GitHub seulement, jamais le jeton
+    const why = { 401: "le jeton GitHub est invalide ou expiré", 403: "le jeton n'a pas le droit « Variables : Read and write » sur ce dépôt", 404: "le jeton n'a pas accès à ce dépôt" }[e.gh];
+    return json({ error: `Stockage GitHub indisponible${why ? ` : ${why}` : ""}.${e.gh ? ` (code GitHub ${e.gh})` : ""}` }, 502);
   }
 }
 
