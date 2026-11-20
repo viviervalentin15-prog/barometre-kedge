@@ -3,7 +3,8 @@
 // Seuls les titres et les liens sont repris : jamais le texte des articles. N'entre dans aucun score.
 
 const MAX_ITEMS = 10;
-const MAX_QUERY = 80;
+const MAX_QUERY = 120;
+const QUOTE_PAGE = /cours action .*cotation bourse/i; // pages de cotation automatiques, sans information
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 function decode(s) {
@@ -31,7 +32,7 @@ export function parseRss(xml) {
     if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3)).trim();
     const url = tag(block, "link");
     const t = Date.parse(tag(block, "pubDate"));
-    if (!title || !/^https?:\/\//i.test(url) || Number.isNaN(t)) continue;
+    if (!title || QUOTE_PAGE.test(title) || !/^https?:\/\//i.test(url) || Number.isNaN(t)) continue;
     items.push({ title, source, url, date: new Date(t).toISOString() });
   }
   return items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, MAX_ITEMS);
@@ -40,7 +41,7 @@ export function parseRss(xml) {
 export default async function handler(req, res) {
   const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
   if (req.method !== "GET" || !q || q.length > MAX_QUERY) {
-    return res.status(400).json({ error: "Paramètre q requis (80 caractères au plus).", items: [] });
+    return res.status(400).json({ error: "Paramètre q requis (120 caractères au plus).", items: [] });
   }
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`${q} when:30d`)}&hl=fr&gl=FR&ceid=FR:fr`;
   try {

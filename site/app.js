@@ -665,7 +665,7 @@ async function pageCompany(app, ticker) {
     </section>
     ${familyGuide()}
     </div>
-    <div class="tab-panel" data-panel="actualites" hidden>${newsCard("c-news", shortName(d.name), "Actualités de l'entreprise")}</div>
+    <div class="tab-panel" data-panel="actualites" hidden>${newsCard("c-news", `"${shortName(d.name)}" (bourse OR action OR résultats OR dividende OR analystes)`, "Actualités de l'entreprise")}</div>
     <div class="tab-panel" data-panel="concurrents" hidden>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
