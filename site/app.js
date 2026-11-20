@@ -1088,7 +1088,8 @@ async function pageMethod(app) {
       <li>Univers d'aujourd'hui : les entreprises sorties des indices manquent aux tests (biais du survivant).</li>
       <li>Euro Stoxx reconstitué : la composition officielle est réservée aux abonnés STOXX.</li>
       <li>Yahoo Finance est une source non officielle ; en cas de panne, la dernière version valide est conservée et signalée.</li>
-      <li>Délais de publication des chiffres macro non modélisés ; indices sans dividendes ; poids choisis par le groupe.</li>
+      <li>Délais de publication modélisés par un décalage fixe (1 mois), sans tenir compte des révisions ultérieures des chiffres ; indices sans dividendes ; poids choisis par le groupe.</li>
+      <li>La prévision du marché par la valorisation n'est pas testée sur le site (pas d'historique de PER) ; le taux réel de la zone euro est approché.</li>
       <li>Seulement 4-5 ans de comptes annuels : les prévisions fondées sur les comptes à 3 ans sont peu testées.</li>
       <li>Projet étudiant : rien sur ce site n'est un conseil en investissement.</li>
     </ul>
