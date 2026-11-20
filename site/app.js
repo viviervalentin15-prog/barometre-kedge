@@ -231,7 +231,6 @@ function bindTabs(id) {
 
 /* ---------- lexique : info-bulles sur le jargon ---------- */
 const GLOSSARY = {
-  "Séance": "Variation entre le cours d'ouverture et le cours de clôture d'une même journée de bourse. La moyenne des 12 dernières séances indique si le titre a tendance à monter ou à baisser en cours de journée.",
   "PER prévisionnel": "Cours divisé par le bénéfice par action attendu sur les 12 prochains mois.",
   "PER": "Price Earning Ratio : cours de l'action divisé par le bénéfice par action. Combien d'années de bénéfices on paie.",
   "VE / EBITDA": "Valeur de l'entreprise (capitalisation + dette nette) divisée par l'excédent brut d'exploitation. Valorisation indépendante de la structure financière.",
@@ -513,7 +512,7 @@ function companyTable(box, fixed) {
     <div class="more-row"><button class="btn ghost" id="t-more">Afficher plus</button></div>`;
   const fams = S.companies.families;
   const cols = [["", ""], ["n", "Entreprise"], ...(fixed.sector ? [["i", "Sous-industrie"]] : [["s", "Secteur"]]), ["c", "Pays"], ["cap", "Capitalisation", 1],
-    ["sc", "Score", 1], ...fams.map((f) => ["f_" + f.id, f.label, 1]), ["p1y", "Perf. 1 an", 1], ["s1", "Séance", 1], ["s12", "Moy. 12 séances", 1], ["pe", "PER", 1], ["dy", "Dividende", 1]];
+    ["sc", "Score", 1], ...fams.map((f) => ["f_" + f.id, f.label, 1]), ["p1y", "Perf. 1 an", 1], ["pe", "PER", 1], ["dy", "Dividende", 1]];
   const head = document.getElementById("t-head");
   head.innerHTML = cols.map(([k, l, num]) => `<th data-k="${k}" class="${num ? "num" : ""} ${k ? "sortable" : ""} ${st.sort === k ? (st.dir < 0 ? "desc" : "asc") : ""}">${l}</th>`).join("");
   head.querySelectorAll("th.sortable").forEach((th) => th.addEventListener("click", () => {
@@ -539,8 +538,6 @@ function companyTable(box, fixed) {
       <td class="num nowrap">${companyScore(c)}</td>
       ${fams.map((f) => `<td class="num fam" style="color:${scoreColor(c["f_" + f.id])}">${fmt(c["f_" + f.id], 0)}</td>`).join("")}
       <td class="num nowrap ${pctCls(c.p1y)}">${signed(c.p1y)} %</td>
-      <td class="num nowrap ${pctCls(c.s1)}">${c.s1 == null ? "–" : signed(c.s1, 2) + " %"}</td>
-      <td class="num nowrap ${pctCls(c.s12)}">${c.s12 == null ? "–" : signed(c.s12, 2) + " %"}</td>
       <td class="num">${fmt(c.pe)}</td>
       <td class="num nowrap">${fmt(c.dy, 1)} %</td></tr>`).join("");
     document.getElementById("t-more").style.display = rows.length > st.limit ? "" : "none";
@@ -657,7 +654,6 @@ async function pageCompany(app, ticker) {
       ${kpi("Capitalisation", capLabel(d.cap_usd / 1e9))}
       ${kpi("Performance 1 an", signed(d.perf.perf_1y) + " %", pctCls(d.perf.perf_1y))}
       ${kpi("Depuis le 1er janvier", signed(d.perf.perf_ytd) + " %", pctCls(d.perf.perf_ytd))}
-      ${d.session ? kpi("Séance", signed(d.session.last, 2) + " %", pctCls(d.session.last), `ouverture → clôture du ${new Date(d.session.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} · moyenne ${d.session.n} séances <b class="${pctCls(d.session.avg12)}">${signed(d.session.avg12, 2)} %</b>`) : ""}
       ${kpi("PER", d.loss && d.metrics.pe.value == null ? "en perte" : fu(d.metrics.pe.value, 1, "x"), "", `secteur ${fu(d.metrics.pe.sector_median, 1, "x")}`)}
       ${kpi("Dividende", fu(d.metrics.div_yield.value, 2, "%"), "", `secteur ${fu(d.metrics.div_yield.sector_median, 2, "%")}`)}
     </section>
@@ -1423,7 +1419,6 @@ async function pagePortfolio(app) {
       <td class="num">${l.v.buyPrice != null ? fmt(l.v.buyPrice, 2) + cur(l.d?.currency) : "–"}</td>
       <td class="num">${l.v.status === "ok" ? euro(l.v.value) : `<span class="status">${esc(l.v.status)}</span>`}</td>
       <td class="num ${pctCls(l.v.perf)}">${l.v.perf != null ? signed(l.v.perf * 100) + " %" : "–"}</td>
-      <td class="num ${pctCls(l.d?.session?.last)}">${l.d?.session ? signed(l.d.session.last, 2) + " %" : "–"}<div class="src">moy. 12 : ${l.d?.session ? signed(l.d.session.avg12, 2) + " %" : "–"}</div></td>
       <td class="num">${l.d ? scorePill(l.d.score) : "–"}</td>
       <td>${l.d ? `${RECO[l.d.recommendation] || "–"}${up != null ? `<div class="src">objectif ${signed(up * 100)} %</div>` : ""}` : "–"}</td>
       <td class="num"><b style="color:${probColor(h["1a"]?.p)}">${pct(h["1a"]?.p)}</b> · <b style="color:${probColor(h["3a"]?.p)}">${pct(h["3a"]?.p)}</b></td>
@@ -1445,7 +1440,7 @@ async function pagePortfolio(app) {
       </form><p class="status" id="pf-error" hidden></p></section>
     ${Object.keys(plats).length ? `<section class="card"><div class="card-head"><h2>Répartition par plateforme</h2></div>${Object.entries(plats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="pf-plat"><span>${esc(k)}</span><span class="bar"><span style="width:${(v / value) * 100}%;background:var(--gold)"></span></span><b class="num">${euro(v)}</b></div>`).join("")}</section>` : ""}
     <section class="card"><div class="card-head"><h2>Lignes</h2></div>
-      ${items.length ? `<div class="table-wrap"><table class="table pf-table"><thead><tr><th>Action</th><th>Plateforme</th><th>Achat</th><th class="num">Investi</th><th class="num">Cours d'achat</th><th class="num">Valeur</th><th class="num">Perf.</th><th class="num">${g("Séance")}</th><th class="num">Score</th><th>Analystes</th><th class="num">Prévisions 1 an · 3 ans</th><th></th></tr></thead><tbody>${lines.map(row).join("")}</tbody></table></div>` : '<p class="hint">Aucune ligne pour l\'instant : ajoutez votre première action ci-dessus.</p>'}
+      ${items.length ? `<div class="table-wrap"><table class="table pf-table"><thead><tr><th>Action</th><th>Plateforme</th><th>Achat</th><th class="num">Investi</th><th class="num">Cours d'achat</th><th class="num">Valeur</th><th class="num">Perf.</th><th class="num">Score</th><th>Analystes</th><th class="num">Prévisions 1 an · 3 ans</th><th></th></tr></thead><tbody>${lines.map(row).join("")}</tbody></table></div>` : '<p class="hint">Aucune ligne pour l\'instant : ajoutez votre première action ci-dessus.</p>'}
       <p class="src">Performance calculée sur le cours de l'action (dernier cours hebdomadaire connu à la date d'achat), sans l'effet de change euro/dollar. Score, avis des analystes et prévisions sont repris du site et restent séparés ; pas un conseil en investissement.</p></section>`;
   document.getElementById("pf-lock").addEventListener("click", () => { pfCode.set(""); route(); });
   let chosen = null;
