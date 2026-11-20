@@ -8,14 +8,84 @@ const TYPE_LABEL = { cyclique: "Cyclique", defensif: "Défensif", neutre: "Neutr
 const CRISES = [["2008-09", "2009-06", "Crise financière"], ["2020-02", "2020-06", "Covid"], ["2022-02", "2022-10", "Choc d'inflation"]];
 const VIEW_ZONES = { commun: ["US", "EZ"], US: ["US"], EZ: ["EZ"] };
 
+/* ---------- charte « salle des marchés » : couleurs des deux thèmes ---------- */
+const THEMES = {
+  light: { main: "#1d4f91", main2: "#8fb0db", grid: "#ece9e1", warn: "#b9770e", bad: "#b4413a", good: "#1f7a5a", good2: "#5fae7e", teal: "#2a9d8f", violet: "#6c5ce7", coral: "#e76f51", ink: "#0f1b2d", neutral: "#8a8f98", muted: "#5d6878", na: "#c7ccd4", surface: "#f3f1ec", soft: "#e8edf4", badInk: "#8b3a30", line2: "#b9bec6", card: "#ffffff", gold: "#b8892b" },
+  dark: { main: "#7fa6d9", main2: "#3d5f8f", grid: "#1f2b42", warn: "#e0a43a", bad: "#ff6b5e", good: "#4cc38a", good2: "#7fd3a5", teal: "#4fc1b2", violet: "#9d90f5", coral: "#f2917a", ink: "#e6e9ef", neutral: "#8b97ab", muted: "#8b97ab", na: "#3a4760", surface: "#111b2e", soft: "#1c2c47", badInk: "#ff9b90", line2: "#3a4760", card: "#111b2e", gold: "#d8b45a" },
+};
+const C = {};
+function alpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function chartTheme(c) {
+  const axis = { axisLine: { lineStyle: { color: c.line2 } }, axisTick: { lineStyle: { color: c.line2 } }, axisLabel: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } }, nameTextStyle: { color: c.muted } };
+  return {
+    color: PALETTE, backgroundColor: "transparent",
+    textStyle: { fontFamily: '"IBM Plex Sans", system-ui, sans-serif', color: c.muted },
+    legend: { textStyle: { color: c.muted }, pageTextStyle: { color: c.muted } },
+    tooltip: { backgroundColor: c.card, borderColor: c.line2, textStyle: { color: c.ink } },
+    categoryAxis: axis, valueAxis: axis, timeAxis: axis, logAxis: axis,
+    dataZoom: { textStyle: { color: c.muted }, borderColor: c.grid, fillerColor: alpha(c.main, 0.15), dataBackground: { lineStyle: { color: c.line2 }, areaStyle: { color: c.grid } } },
+    radar: { axisName: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } }, axisLine: { lineStyle: { color: c.grid } }, splitArea: { show: false } },
+  };
+}
+function registerChartThemes() {
+  if (!window.echarts) return;
+  echarts.registerTheme("clair", chartTheme(THEMES.light));
+  echarts.registerTheme("sombre", chartTheme(THEMES.dark));
+}
+function applyTheme(theme) {
+  S.theme = theme === "dark" ? "dark" : "light";
+  Object.assign(C, THEMES[S.theme]);
+  document.documentElement.dataset.theme = S.theme;
+  const b = document.getElementById("theme-btn");
+  if (b) b.setAttribute("aria-label", S.theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre");
+}
+function toggleTheme() {
+  applyTheme(S.theme === "dark" ? "light" : "dark");
+  try { localStorage.setItem("theme", S.theme); } catch { /* stockage indisponible : le choix vaut pour la session */ }
+  disposeCharts();
+  route();
+}
+
+/* ---------- actualités (Google Actualités, à la demande ; hors score) ---------- */
+const NEWS = {};
+function newsCard(id, q, title) {
+  return `<section class="card" id="${id}" data-q="${esc(q)}"><div class="card-head"><h2>${title}</h2><span class="pill">Google Actualités · 30 derniers jours</span></div>
+    <div class="news-body"></div><p class="src">Titres de presse donnés à titre d'information, avec un lien vers l'article : ils n'entrent dans aucun score.</p></section>`;
+}
+function newsDate(iso) {
+  const d = new Date(iso), h = (Date.now() - d) / 36e5;
+  if (h < 1) return "il y a moins d'une heure";
+  if (h < 24) return `il y a ${Math.floor(h)} h`;
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+}
+async function fillNews(el) {
+  if (!el || el.dataset.loaded) return;
+  el.dataset.loaded = "1";
+  const q = el.dataset.q, body = el.querySelector(".news-body");
+  body.innerHTML = '<p class="hint">Chargement des actualités…</p>';
+  try {
+    NEWS[q] ||= fetch(`/api/actualites?q=${encodeURIComponent(q)}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    const { items = [] } = await NEWS[q];
+    body.innerHTML = items.length
+      ? `<ul class="news">${items.map((i) => `<li><a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a><span class="meta"><b>${esc(i.source || "Presse")}</b> · ${newsDate(i.date)}</span></li>`).join("")}</ul>`
+      : '<p class="hint">Aucune actualité trouvée sur les 30 derniers jours.</p>';
+  } catch {
+    delete NEWS[q]; delete el.dataset.loaded;
+    body.innerHTML = '<p class="hint">Actualités indisponibles pour le moment. Réessayez plus tard.</p>';
+  }
+}
+
 /* ---------- outils ---------- */
 function scoreColor(s) {
-  if (s == null) return "#c7ccd4";
-  if (s >= 70) return "#1f8a5b";
-  if (s >= 55) return "#5fae7e";
-  if (s >= 45) return "#8a8f98";
-  if (s >= 30) return "#c27c0e";
-  return "#c0392b";
+  if (s == null) return C.na;
+  if (s >= 70) return C.good;
+  if (s >= 55) return C.good2;
+  if (s >= 45) return C.neutral;
+  if (s >= 30) return C.warn;
+  return C.bad;
 }
 const fmt = (x, d = 1) => (x == null || Number.isNaN(x) ? "–" : Number(x).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
 const signed = (x, d = 1) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, d));
@@ -50,7 +120,7 @@ function chart(id) {
   const el = document.getElementById(id);
   if (!el) return null;
   if (S.charts[id] && S.charts[id].getDom() !== el) { S.charts[id].dispose(); delete S.charts[id]; }
-  if (!S.charts[id]) S.charts[id] = echarts.init(el, null, { renderer: "svg" });
+  if (!S.charts[id]) S.charts[id] = echarts.init(el, S.theme === "dark" ? "sombre" : "clair", { renderer: "svg" });
   return S.charts[id];
 }
 function disposeCharts() { Object.values(S.charts).forEach((c) => c.dispose()); S.charts = {}; }
@@ -130,6 +200,7 @@ function bindTabs(id) {
     bar.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
     document.querySelectorAll(".tab-panel").forEach((p) => (p.hidden = p.dataset.panel !== tab));
     S.companyTab = tab;
+    if (tab === "actualites") fillNews(document.getElementById("c-news"));
     Object.values(S.charts).forEach((c) => c.resize());   // les graphiques d'un onglet caché ont une taille nulle
   };
   bar.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
@@ -188,6 +259,9 @@ async function getJSON(url) {
 }
 
 async function init() {
+  applyTheme(document.documentElement.dataset.theme);
+  registerChartThemes();
+  document.getElementById("theme-btn")?.addEventListener("click", toggleTheme);
   try { S.macro = await getJSON("data/macro.json"); } catch { document.getElementById("app").innerHTML = '<div class="banner">Données indisponibles.</div>'; return; }
   try { S.sectors = await getJSON("data/sectors.json"); } catch { S.sectors = null; }
   try { S.companies = await getJSON("data/companies.json"); } catch { S.companies = null; }
@@ -276,22 +350,22 @@ function pageHome(app) {
     const pts = s.index.slice(-52);
     chart("spark-" + s.id).setOption({ grid: { left: 0, right: 0, top: 2, bottom: 0 }, xAxis: { type: "category", show: false, data: S.sectors.index_dates.slice(-52) },
       yAxis: { type: "value", show: false, scale: true },
-      series: [{ type: "line", data: pts, symbol: "none", smooth: true, lineStyle: { width: 1.5, color: (pts.at(-1) >= pts[0]) ? "#1f8a5b" : "#c0392b" } }] });
+      series: [{ type: "line", data: pts, symbol: "none", smooth: true, lineStyle: { width: 1.5, color: (pts.at(-1) >= pts[0]) ? C.good : C.bad } }] });
   });
   const items = [...sv.sectors].reverse();
   const m = S.sectors.method;
   chart("sector-decomp").setOption({
     grid: { left: 170, right: 60, top: 30, bottom: 24 }, legend: { top: 0, data: ["Entreprises", "Tendance", "Ajustement macro"] },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => fmt(v) },
-    xAxis: { type: "value", min: -10, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    xAxis: { type: "value", min: -10, max: 100, splitLine: { lineStyle: { color: C.grid } } },
     yAxis: { type: "category", data: items.map((s) => s.label) },
     series: [
-      { name: "Entreprises", type: "bar", stack: "s", data: items.map((s) => +(m.company_weight * (s.company_norm ?? s.company_score)).toFixed(1)), itemStyle: { color: "#1f4e8c" } },
-      { name: "Tendance", type: "bar", stack: "s", data: items.map((s) => +(m.trend_weight * (s.trend_norm ?? s.trend_score)).toFixed(1)), itemStyle: { color: "#7ea6d8" } },
-      { name: "Ajustement macro", type: "bar", stack: "s", data: items.map((s) => s.macro_tilt), itemStyle: { color: "#c27c0e" } },
+      { name: "Entreprises", type: "bar", stack: "s", data: items.map((s) => +(m.company_weight * (s.company_norm ?? s.company_score)).toFixed(1)), itemStyle: { color: C.main } },
+      { name: "Tendance", type: "bar", stack: "s", data: items.map((s) => +(m.trend_weight * (s.trend_norm ?? s.trend_score)).toFixed(1)), itemStyle: { color: C.main2 } },
+      { name: "Ajustement macro", type: "bar", stack: "s", data: items.map((s) => s.macro_tilt), itemStyle: { color: C.warn } },
       { name: "Score", type: "scatter", symbolSize: 0, tooltip: { show: false },
         data: items.map((s) => m.company_weight * (s.company_norm ?? s.company_score) + m.trend_weight * (s.trend_norm ?? s.trend_score) + Math.max(s.macro_tilt, 0)),
-        label: { show: true, position: "right", distance: 8, color: "#16202e", fontWeight: 600, formatter: (p) => "= " + fmt(items[p.dataIndex].score) } },
+        label: { show: true, position: "right", distance: 8, color: C.ink, fontWeight: 600, formatter: (p) => "= " + fmt(items[p.dataIndex].score) } },
     ],
   });
 }
@@ -353,28 +427,30 @@ function pageSector(app, id) {
       <div class="card"><div class="card-head"><h2>Les 4 familles de critères</h2></div>
         <p class="hint">Moyenne pondérée par la capitalisation. Notes sur 100 face à l'ensemble des entreprises analysées, pour comparer les secteurs entre eux.</p><div id="sector-fams" class="chart chart-md"></div></div>
     </section>
-    <section class="card"><div class="card-head"><h2>Entreprises du secteur</h2></div><div id="table"></div></section>`;
+    <section class="card"><div class="card-head"><h2>Entreprises du secteur</h2></div><div id="table"></div></section>
+    ${newsCard("s-news", `secteur ${s.label.toLowerCase()} bourse`, "Actualités du secteur")}`;
   chart("sector-index").setOption({
     grid: { left: 44, right: 16, top: 16, bottom: 40 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) },
     xAxis: { type: "time", splitLine: { show: false } },
-    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: C.grid } } },
     dataZoom: [{ type: "inside" }],
-    series: [{ type: "line", data: S.sectors.index_dates.map((d, k) => [d, s.index[k]]), symbol: "none", lineStyle: { width: 2, color: "#1f4e8c" }, areaStyle: { color: "rgba(31,78,140,.07)" } }],
+    series: [{ type: "line", data: S.sectors.index_dates.map((d, k) => [d, s.index[k]]), symbol: "none", lineStyle: { width: 2, color: C.main }, areaStyle: { color: alpha(C.main, .07) } }],
   });
   const fams = S.sectors.families;
   chart("sector-fams").setOption({
     grid: { left: 110, right: 40, top: 10, bottom: 20 },
-    xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: C.grid } } },
     yAxis: { type: "category", data: fams.map((f) => f.label).reverse() },
     series: [{ type: "bar", barWidth: 18, data: fams.map((f) => ({ value: s.families[f.id], itemStyle: { color: scoreColor(s.families[f.id]), borderRadius: 3 } })).reverse(),
       label: { show: true, position: "right", formatter: (p) => fmt(p.value) } }],
   });
   companyTable(document.getElementById("table"), { sector: id });
+  fillNews(document.getElementById("s-news"));
 }
 
 function familyGuide() {
   const fams = S.companies?.families || [];
-  return `<section class="fam-guide">${fams.map((f, k) => `<div class="card fam-card"><div class="fam-name"><i style="background:${["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k]}"></i>${f.label} · ${f.weight} points</div><p>${esc(f.description || "")}</p></div>`).join("")}</section>`;
+  return `<section class="fam-guide">${fams.map((f, k) => `<div class="card fam-card"><div class="fam-name"><i style="background:${[C.main, C.teal, C.warn, C.violet][k]}"></i>${f.label} · ${f.weight} points</div><p>${esc(f.description || "")}</p></div>`).join("")}</section>`;
 }
 
 function kpi(label, value, cls = "", sub = "") { return `<div class="card kpi"><div class="label">${g(label)}</div><div class="kpi-value ${cls}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`; }
@@ -466,7 +542,7 @@ function inSize(cap, bucket) {
    OUTILS DE COMPARAISON (fiche et pools)
    ===================================================================== */
 const PERIODS = [["1a", 52, "1 an"], ["3a", 156, "3 ans"], ["5a", 400, "5 ans"]];
-const PALETTE = ["#1f4e8c", "#e76f51", "#2a9d8f", "#c27c0e", "#6c5ce7", "#d63384", "#3d8bfd", "#8a6d3b", "#20c997", "#6f42c1", "#fd7e14", "#495057"];
+const PALETTE = ["#4f7fc4", "#e76f51", "#2a9d8f", "#d39a2c", "#8c7cf0", "#e05a9a", "#3fa7d6", "#a8875a", "#3cc49a", "#b06ad8", "#f08c3a", "#7d8796"];
 const RECO = { strong_buy: "Achat fort", buy: "Achat", hold: "Conserver", underperform: "Sous-performance", sell: "Vente", outperform: "Surperformance", none: "–" };
 
 /* Aligne des séries hebdomadaires sur une liste de dates et les rebase à 100 au début de la période. */
@@ -547,7 +623,7 @@ async function pageCompany(app, ticker) {
       : d.n_missing || d.loss ? `<div class="banner info">${d.n_missing ? `${d.n_missing} critère${d.n_missing > 1 ? "s" : ""} manquant${d.n_missing > 1 ? "s" : ""} : note neutre de 50 appliquée, pour ne pas avantager ni pénaliser l'entreprise. ` : ""}${d.loss ? "L'entreprise est en perte : son PER n'existe pas et reçoit la note 0." : ""}</div>` : ""}
     <nav class="tabs" id="c-tabs">
       <button data-tab="synthese" class="on">Synthèse</button><button data-tab="previsions">Prévisions</button>
-      <button data-tab="criteres">Critères</button><button data-tab="concurrents">Concurrents et activité</button>
+      <button data-tab="criteres">Critères</button><button data-tab="concurrents">Concurrents et activité</button><button data-tab="actualites">Actualités</button>
     </nav>
     <div class="tab-panel" data-panel="synthese">
     <section class="kpis">
@@ -589,6 +665,7 @@ async function pageCompany(app, ticker) {
     </section>
     ${familyGuide()}
     </div>
+    <div class="tab-panel" data-panel="actualites" hidden>${newsCard("c-news", shortName(d.name), "Actualités de l'entreprise")}</div>
     <div class="tab-panel" data-panel="concurrents" hidden>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Concurrents les plus proches</h2></div>
@@ -612,11 +689,11 @@ async function pageCompany(app, ticker) {
   const secView = S.sectors?.views[d.zone]?.sectors.find((x) => x.id === d.sector);
   const drawPerf = (p) => {
     const start = startDate(weeksOf(p));
-    const series = [{ name: d.name, type: "line", symbol: "none", lineStyle: { width: 2.5, color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" }, data: rebase(d.prices.dates, d.prices.close, start) }];
-    if (secView) series.push({ name: `Secteur ${d.sector_label} (${ZONE_LABEL[d.zone]})`, type: "line", symbol: "none", lineStyle: { width: 1.5, color: "#2a9d8f" }, itemStyle: { color: "#2a9d8f" }, data: rebase(S.sectors.index_dates, secView.index, start) });
-    if (bench) series.push({ name: bench.name, type: "line", symbol: "none", lineStyle: { width: 1.5, color: "#8a8f98", type: "dashed" }, itemStyle: { color: "#8a8f98" }, data: rebase(S.sectors.index_dates, bench.values, start) });
+    const series = [{ name: d.name, type: "line", symbol: "none", lineStyle: { width: 2.5, color: C.main }, itemStyle: { color: C.main }, data: rebase(d.prices.dates, d.prices.close, start) }];
+    if (secView) series.push({ name: `Secteur ${d.sector_label} (${ZONE_LABEL[d.zone]})`, type: "line", symbol: "none", lineStyle: { width: 1.5, color: C.teal }, itemStyle: { color: C.teal }, data: rebase(S.sectors.index_dates, secView.index, start) });
+    if (bench) series.push({ name: bench.name, type: "line", symbol: "none", lineStyle: { width: 1.5, color: C.neutral, type: "dashed" }, itemStyle: { color: C.neutral }, data: rebase(S.sectors.index_dates, bench.values, start) });
     chart("c-perf").setOption({ grid: { left: 44, right: 16, top: 40, bottom: 30 }, legend: { top: 0, type: "scroll" }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) },
-      xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, series }, true);
+      xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: C.grid } } }, series }, true);
   };
   drawPerf("1a"); bindPeriod("c-period", drawPerf);
   drawCone(d);
@@ -626,8 +703,8 @@ async function pageCompany(app, ticker) {
     legend: { bottom: 0 }, tooltip: {},
     radar: { indicator: fams.map((f) => ({ name: f.label, max: 100 })), radius: "62%", splitArea: { show: false } },
     series: [{ type: "radar", data: [
-      { value: fams.map((f) => d.families[f.id] ?? 0), name: d.name, areaStyle: { color: "rgba(31,78,140,.2)" }, lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" }, label: { show: true, formatter: (p) => fmt(p.value, 0) } },
-      ...(sec ? [{ value: fams.map((f) => (sec.families_in_sector || sec.families)[f.id] ?? 0), name: "Moyenne du secteur", lineStyle: { color: "#c27c0e", type: "dashed" }, itemStyle: { color: "#c27c0e" } }] : []),
+      { value: fams.map((f) => d.families[f.id] ?? 0), name: d.name, areaStyle: { color: alpha(C.main, .2) }, lineStyle: { color: C.main }, itemStyle: { color: C.main }, label: { show: true, formatter: (p) => fmt(p.value, 0) } },
+      ...(sec ? [{ value: fams.map((f) => (sec.families_in_sector || sec.families)[f.id] ?? 0), name: "Moyenne du secteur", lineStyle: { color: C.warn, type: "dashed" }, itemStyle: { color: C.warn } }] : []),
     ] }],
   });
 
@@ -637,11 +714,11 @@ async function pageCompany(app, ticker) {
     grid: { left: 50, right: 20, top: 34, bottom: 44 },
     tooltip: { formatter: (p) => `${esc(p.data[2])}<br>Score ${fmt(p.data[1])} · ${capLabel(p.data[0])}` },
     xAxis: { type: "log", name: "Capitalisation (Md$, échelle log.)", nameLocation: "middle", nameGap: 28, splitLine: { show: false } },
-    yAxis: { type: "value", name: "Score", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "value", name: "Score", min: 0, max: 100, splitLine: { lineStyle: { color: C.grid } } },
     series: [
-      { type: "scatter", symbolSize: 7, itemStyle: { color: "rgba(138,143,152,.45)" }, data: mates.filter((c) => c.t !== d.ticker).map((c) => [c.cap, c.sc, c.n]) },
-      { type: "scatter", symbolSize: 16, itemStyle: { color: "#1f4e8c", borderColor: "#fff", borderWidth: 2 }, data: [[d.cap_usd / 1e9, d.score, d.name]],
-        label: { show: true, position: "top", formatter: () => d.name, fontWeight: 600, color: "#16202e" } },
+      { type: "scatter", symbolSize: 7, itemStyle: { color: alpha(C.neutral, .45) }, data: mates.filter((c) => c.t !== d.ticker).map((c) => [c.cap, c.sc, c.n]) },
+      { type: "scatter", symbolSize: 16, itemStyle: { color: C.main, borderColor: C.card, borderWidth: 2 }, data: [[d.cap_usd / 1e9, d.score, d.name]],
+        label: { show: true, position: "top", formatter: () => d.name, fontWeight: 600, color: C.ink } },
     ],
   });
 
@@ -651,10 +728,10 @@ async function pageCompany(app, ticker) {
   chart("c-metrics").setOption({
     grid: { left: 200, right: 30, top: 10, bottom: 20 },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (a) => `${a[0].name}<br>Note ${fmt(a[0].value, 0)} / 100` },
-    xAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    xAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: C.grid } } },
     yAxis: { type: "category", data: rev.map((m) => m.label), axisLabel: { fontSize: 11, width: 190, overflow: "truncate" } },
     series: [{ type: "bar", barWidth: 10, data: rev.map((m) => ({ value: m.s, itemStyle: { color: scoreColor(m.s), borderRadius: 2 } })),
-      markLine: { silent: true, symbol: "none", lineStyle: { color: "#8a8f98", type: "dashed" }, label: { show: false }, data: [{ xAxis: 50 }] } }],
+      markLine: { silent: true, symbol: "none", lineStyle: { color: C.neutral, type: "dashed" }, label: { show: false }, data: [{ xAxis: 50 }] } }],
   });
 
   // Historique du score
@@ -662,8 +739,8 @@ async function pageCompany(app, ticker) {
   const note = document.getElementById("c-hist-note");
   if (h && h.dates.length >= 2) {
     chart("c-hist").setOption({ grid: { left: 36, right: 16, top: 10, bottom: 24 }, tooltip: { trigger: "axis" },
-      xAxis: { type: "time" }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
-      series: [{ type: "line", data: h.dates.map((x, k) => [x, h.score[k]]), lineStyle: { color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" } }] });
+      xAxis: { type: "time" }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: C.grid } } },
+      series: [{ type: "line", data: h.dates.map((x, k) => [x, h.score[k]]), lineStyle: { color: C.main }, itemStyle: { color: C.main } }] });
     note.textContent = "Un point par mise à jour des données.";
   } else {
     document.getElementById("c-hist").style.display = "none";
@@ -795,10 +872,10 @@ async function poolReport(box, rows) {
   chart("p-rank").setOption({
     grid: { left: 170, right: 50, top: 30, bottom: 10 }, legend: { top: 0 },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => fmt(v) },
-    xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    xAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: C.grid } } },
     yAxis: { type: "category", data: rev.map((x) => x.nm), axisLabel: { width: 160, overflow: "truncate" } },
     series: [...fams.map((f, k) => ({ name: f.label, type: "bar", stack: "s", barWidth: 16,
-      itemStyle: { color: ["#1f4e8c", "#2a9d8f", "#c27c0e", "#6c5ce7"][k] },
+      itemStyle: { color: [C.main, C.teal, C.warn, C.violet][k] },
       data: rev.map((x) => (x.c["f_" + f.id] != null ? +(x.c["f_" + f.id] * f.weight / 100).toFixed(1) : 0)) })),
       { type: "scatter", symbolSize: 0, tooltip: { show: false }, data: rev.map((x) => x.c.sc), label: { show: true, position: "right", fontWeight: 600, formatter: (p) => fmt(p.value) } }],
   });
@@ -819,11 +896,11 @@ async function poolReport(box, rows) {
     const maps = curves.map((c) => new Map(c));
     const pool = allDates.map((dt) => { const v = maps.map((m) => m.get(dt)).filter((x) => x != null); return [dt, v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : null]; });
     const series = items.map((x, k) => ({ name: x.nm, type: "line", symbol: "none", lineStyle: { width: 1.5, color: x.color }, itemStyle: { color: x.color }, data: curves[k] }));
-    series.push({ name: "Pool équipondéré", type: "line", symbol: "none", lineStyle: { width: 3.5, color: "#16202e" }, itemStyle: { color: "#16202e" }, data: pool, z: 5 });
-    zones.forEach((z) => { const b = S.sectors.benchmarks?.[z]; if (b) series.push({ name: b.name, type: "line", symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: "#8a8f98" }, itemStyle: { color: "#8a8f98" }, data: rebase(S.sectors.index_dates, b.values, st) }); });
+    series.push({ name: "Pool équipondéré", type: "line", symbol: "none", lineStyle: { width: 3.5, color: C.ink }, itemStyle: { color: C.ink }, data: pool, z: 5 });
+    zones.forEach((z) => { const b = S.sectors.benchmarks?.[z]; if (b) series.push({ name: b.name, type: "line", symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: C.neutral }, itemStyle: { color: C.neutral }, data: rebase(S.sectors.index_dates, b.values, st) }); });
     chart("p-perf").setOption({ grid: { left: 44, right: 16, top: 50, bottom: 30 }, legend: { top: 0, type: "scroll" },
       tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) }, xAxis: { type: "time", splitLine: { show: false } },
-      yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, dataZoom: [{ type: "inside" }], series }, true);
+      yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: C.grid } } }, dataZoom: [{ type: "inside" }], series }, true);
   };
   drawPerf("1a"); bindPeriod("p-period", drawPerf);
   drawPoolMonteCarlo(items);
@@ -859,7 +936,7 @@ async function poolReport(box, rows) {
     grid: { left: 150, right: 20, top: 10, bottom: 80 }, tooltip: { formatter: (p) => `${esc(names[p.data[1]])} / ${esc(names[p.data[0]])} : <b>${fmt(p.data[2], 2)}</b>` },
     xAxis: { type: "category", data: names, axisLabel: { rotate: 35, width: 110, overflow: "truncate", fontSize: 11 } },
     yAxis: { type: "category", inverse: true, data: names, axisLabel: { width: 140, overflow: "truncate", fontSize: 11 } },
-    visualMap: { show: false, min: -1, max: 1, inRange: { color: ["#2a9d8f", "#f5f6f8", "#c0392b"] } },
+    visualMap: { show: false, min: -1, max: 1, inRange: { color: [C.teal, C.surface, C.bad] } },
     series: [{ type: "heatmap", data: C.flatMap((r, i) => r.map((v, j) => [j, i, v == null ? null : +v.toFixed(2)])), label: { show: items.length <= 10, fontSize: 10, formatter: (p) => fmt(p.data[2], 2) } }],
   });
 
@@ -868,9 +945,9 @@ async function poolReport(box, rows) {
     grid: { left: 50, right: 20, top: 34, bottom: 40 },
     tooltip: { formatter: (p) => `${esc(p.data[2])}<br>Volatilité ${fmt(p.data[0])} % · perf. ${signed(p.data[1])} %` },
     xAxis: { type: "value", name: "Volatilité 1 an (%)", nameLocation: "middle", nameGap: 26, scale: true, splitLine: { show: false } },
-    yAxis: { type: "value", name: "Perf. 1 an (%)", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "value", name: "Perf. 1 an (%)", scale: true, splitLine: { lineStyle: { color: C.grid } } },
     series: [{ type: "scatter", symbolSize: 11, data: items.map((x, k) => ({ value: [vols[k], x.c.p1y, x.nm], itemStyle: { color: x.color } })) },
-      { type: "scatter", symbol: "diamond", symbolSize: 18, itemStyle: { color: "#16202e" }, data: [[poolVol, perf1y, "Pool équipondéré"]], label: { show: true, position: "right", formatter: "Pool" } }],
+      { type: "scatter", symbol: "diamond", symbolSize: 18, itemStyle: { color: C.ink }, data: [[poolVol, perf1y, "Pool équipondéré"]], label: { show: true, position: "right", formatter: "Pool" } }],
   });
 }
 
@@ -894,7 +971,7 @@ async function loadPredictions(tickers = []) {
   }));
   return S.pred;
 }
-const probColor = (p) => (p == null ? "#8a8f98" : p >= 0.55 ? "#1f8a5b" : p >= 0.52 ? "#5fae7e" : p > 0.48 ? "#8a8f98" : p > 0.45 ? "#c27c0e" : "#c0392b");
+const probColor = (p) => (p == null ? C.neutral : p >= 0.55 ? C.good : p >= 0.52 ? C.good2 : p > 0.48 ? C.neutral : p > 0.45 ? C.warn : C.bad);
 const pct = (x, d = 0) => (x == null ? "–" : fmt(x * 100, d) + " %");
 const spct = (x, d = 0) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x * 100, d) + " %");
 
@@ -940,12 +1017,12 @@ function drawCone(d) {
   const pts = (q) => [[dates.at(-1), last], ...fut.map(([t, cn]) => [t, +(last * (1 + cn[q])).toFixed(2)])];
   chart("c-cone").setOption({
     grid: { left: 50, right: 16, top: 30, bottom: 30 }, legend: { top: 0 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 2) },
-    xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    xAxis: { type: "time", splitLine: { show: false } }, yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: C.grid } } },
     series: [
-      { name: "Cours", type: "line", symbol: "none", data: dates.map((x, k) => [x, close[k]]), lineStyle: { color: "#1f4e8c", width: 2 }, itemStyle: { color: "#1f4e8c" } },
-      { name: "Haut (9 fois sur 10 en dessous)", type: "line", data: pts("q90"), lineStyle: { type: "dashed", color: "#5fae7e" }, itemStyle: { color: "#5fae7e" } },
-      { name: "Médiane", type: "line", data: pts("q50"), lineStyle: { type: "dashed", color: "#16202e" }, itemStyle: { color: "#16202e" } },
-      { name: "Bas (9 fois sur 10 au-dessus)", type: "line", data: pts("q10"), lineStyle: { type: "dashed", color: "#c0392b" }, itemStyle: { color: "#c0392b" } },
+      { name: "Cours", type: "line", symbol: "none", data: dates.map((x, k) => [x, close[k]]), lineStyle: { color: C.main, width: 2 }, itemStyle: { color: C.main } },
+      { name: "Haut (9 fois sur 10 en dessous)", type: "line", data: pts("q90"), lineStyle: { type: "dashed", color: C.good2 }, itemStyle: { color: C.good2 } },
+      { name: "Médiane", type: "line", data: pts("q50"), lineStyle: { type: "dashed", color: C.ink }, itemStyle: { color: C.ink } },
+      { name: "Bas (9 fois sur 10 au-dessus)", type: "line", data: pts("q10"), lineStyle: { type: "dashed", color: C.bad }, itemStyle: { color: C.bad } },
     ],
   });
 }
@@ -1002,11 +1079,11 @@ function drawPoolMonteCarlo(items) {
   chart("p-mc").setOption({
     grid: { left: 44, right: 16, top: 30, bottom: 30 }, legend: { top: 0 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 0) },
     xAxis: { type: "category", data: weeks.map((w) => (w % 52 === 0 ? `${w / 52} an${w > 52 ? "s" : ""}` : w === 26 ? "6 mois" : "")), axisTick: { show: false }, axisLabel: { interval: 0 } },
-    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } },
+    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: C.grid } } },
     series: [
-      { name: "Scénario favorable (9 sur 10 en dessous)", type: "line", symbol: "none", data: p90, lineStyle: { color: "#5fae7e" }, itemStyle: { color: "#5fae7e" } },
-      { name: "Médiane", type: "line", symbol: "none", data: p50, lineStyle: { color: "#16202e", width: 2.5 }, itemStyle: { color: "#16202e" } },
-      { name: "Scénario défavorable (9 sur 10 au-dessus)", type: "line", symbol: "none", data: p10, lineStyle: { color: "#c0392b" }, itemStyle: { color: "#c0392b" } },
+      { name: "Scénario favorable (9 sur 10 en dessous)", type: "line", symbol: "none", data: p90, lineStyle: { color: C.good2 }, itemStyle: { color: C.good2 } },
+      { name: "Médiane", type: "line", symbol: "none", data: p50, lineStyle: { color: C.ink, width: 2.5 }, itemStyle: { color: C.ink } },
+      { name: "Scénario défavorable (9 sur 10 au-dessus)", type: "line", symbol: "none", data: p10, lineStyle: { color: C.bad }, itemStyle: { color: C.bad } },
     ],
   });
 }
@@ -1017,7 +1094,7 @@ function recessionSection() {
   if (!r) return "";
   return `<section class="card pred"><div class="card-head"><h2>Probabilité de récession aux États-Unis dans 12 mois</h2><span class="pill">prévision séparée du score</span></div>
     <div class="grid-2"><div>
-      <div class="pred-p" style="color:${r.latest.prob >= 30 ? "#c0392b" : r.latest.prob >= 15 ? "#c27c0e" : "#1f8a5b"}">${fmt(r.latest.prob, 0)} %</div>
+      <div class="pred-p" style="color:${r.latest.prob >= 30 ? C.bad : r.latest.prob >= 15 ? C.warn : C.good}">${fmt(r.latest.prob, 0)} %</div>
       <p class="hint">${r.model}. Écart actuel : ${fmt(r.latest.spread, 2)} point${Math.abs(r.latest.spread) >= 2 ? "s" : ""} (${monthLabel(r.latest.date)}). Une courbe des taux inversée (écart négatif) a précédé les récessions américaines récentes.</p>
       ${r.check?.prob_moy_avant_recession != null ? `<p class="hint">Sur 2005-2026, la probabilité valait en moyenne <b>${fmt(r.check.prob_moy_avant_recession, 0)} %</b> 12 mois avant une récession, contre <b>${fmt(r.check.prob_moy_hors_recession, 0)} %</b> le reste du temps.</p>` : ""}
     </div><div id="recession-chart" class="chart chart-sm"></div></div></section>`;
@@ -1031,9 +1108,9 @@ function drawRecession() {
   if (start) areas.push([{ xAxis: start }, { xAxis: r.dates.at(-1) }]);
   chart("recession-chart").setOption({
     grid: { left: 40, right: 16, top: 16, bottom: 30 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 0) + " %" },
-    xAxis: { type: "category", data: r.dates, axisLabel: { formatter: (v) => v.slice(0, 4) } }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
-    series: [{ type: "line", symbol: "none", data: r.prob, lineStyle: { color: "#c0392b", width: 2 }, itemStyle: { color: "#c0392b" },
-      markArea: { silent: true, itemStyle: { color: "rgba(22,32,46,.08)" }, data: areas } }],
+    xAxis: { type: "category", data: r.dates, axisLabel: { formatter: (v) => v.slice(0, 4) } }, yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: C.grid } } },
+    series: [{ type: "line", symbol: "none", data: r.prob, lineStyle: { color: C.bad, width: 2 }, itemStyle: { color: C.bad },
+      markArea: { silent: true, itemStyle: { color: alpha(C.ink, .08) }, data: areas } }],
   });
 }
 
@@ -1148,7 +1225,7 @@ function pageMacro(app) {
 function marketSection() {
   const mk = S.pred?.market;
   if (!mk || !Object.keys(mk).length) return "";
-  const verdict = (erp) => erp == null ? "" : erp >= 4 ? ["Actions attractives face aux obligations", "#1f8a5b"] : erp >= 2 ? ["Écart modéré avec les obligations", "#8a8f98"] : ["Actions chères face aux obligations", "#c0392b"];
+  const verdict = (erp) => erp == null ? "" : erp >= 4 ? ["Actions attractives face aux obligations", C.good] : erp >= 2 ? ["Écart modéré avec les obligations", C.neutral] : ["Actions chères face aux obligations", C.bad];
   const card = (z) => { const x = mk[z]; if (!x) return ""; const [v, col] = verdict(x.erp) || ["", ""];
     return `<div class="card pred-card"><div class="label">${z === "US" ? "Actions américaines (S&P 500)" : "Actions de la zone euro (Euro Stoxx)"}</div>
       <div class="pred-p" style="color:${col}">${fmt(x.expected_nominal, 1)} %<small class="muted" style="font-size:14px;font-weight:400"> par an</small></div>
@@ -1179,10 +1256,10 @@ function renderGauge() {
   const L = S.macro.views[S.view].latest;
   chart("gauge").setOption({ series: [{
     type: "gauge", startAngle: 210, endAngle: -30, min: 0, max: 100, radius: "100%", center: ["50%", "62%"],
-    axisLine: { lineStyle: { width: 16, color: [[0.3, "#c0392b"], [0.45, "#c27c0e"], [0.55, "#b9bec6"], [0.7, "#5fae7e"], [1, "#1f8a5b"]] } },
-    pointer: { length: "58%", width: 5, itemStyle: { color: "#16202e" } }, axisTick: { show: false }, splitLine: { show: false },
-    axisLabel: { distance: -38, fontSize: 11, color: "#5d6878", formatter: (v) => (v % 25 === 0 ? v : "") },
-    detail: { valueAnimation: true, offsetCenter: [0, "38%"], fontSize: 38, fontWeight: 700, color: "#16202e", formatter: (v) => fmt(v) },
+    axisLine: { lineStyle: { width: 16, color: [[0.3, C.bad], [0.45, C.warn], [0.55, C.line2], [0.7, C.good2], [1, C.good]] } },
+    pointer: { length: "58%", width: 5, itemStyle: { color: C.ink } }, axisTick: { show: false }, splitLine: { show: false },
+    axisLabel: { distance: -38, fontSize: 11, color: C.muted, formatter: (v) => (v % 25 === 0 ? v : "") },
+    detail: { valueAnimation: true, offsetCenter: [0, "38%"], fontSize: 38, fontWeight: 700, color: C.ink, formatter: (v) => fmt(v) },
     data: [{ value: L.score }] }] });
   const sig = document.getElementById("signal");
   sig.innerHTML = `${L.signal.label}<div class="trend ${L.trend?.tone || ""}">Tendance 3 mois : <b>${L.trend?.label || "–"}</b></div>`; sig.style.color = scoreColor(L.score);
@@ -1202,21 +1279,21 @@ function renderPillars() {
     grid: { left: 0, right: 0, top: 4, bottom: 0 }, xAxis: { type: "category", show: false, data: S.macro.dates.slice(-36) },
     yAxis: { type: "value", show: false, min: 0, max: 100 },
     tooltip: { trigger: "axis", formatter: (a) => `${monthLabel(a[0].axisValue)} : <b>${fmt(a[0].value)}</b>` },
-    series: [{ type: "line", data: V.history.pillars[p.id].slice(-36), symbol: "none", smooth: true, lineStyle: { width: 1.5, color: "#1f4e8c" }, areaStyle: { color: "rgba(31,78,140,.08)" } }],
+    series: [{ type: "line", data: V.history.pillars[p.id].slice(-36), symbol: "none", smooth: true, lineStyle: { width: 1.5, color: C.main }, areaStyle: { color: alpha(C.main, .08) } }],
   }));
 }
 
 function renderHistory() {
   const V = S.macro.views[S.view];
-  const colors = ["#2a9d8f", "#e76f51", "#6c5ce7", "#c27c0e"];
-  const series = [{ name: "Score", type: "line", data: V.history.score, symbol: "none", lineStyle: { width: 2.5, color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" },
-    markArea: { silent: true, itemStyle: { color: "rgba(192,57,43,.07)" }, label: { color: "#8b3a30", fontSize: 11, position: "insideTop" }, data: CRISES.map(([a, b, n]) => [{ name: n, xAxis: a }, { xAxis: b }]) },
-    markLine: { silent: true, symbol: "none", lineStyle: { color: "#b9bec6", type: "dashed" }, label: { show: false }, data: [{ yAxis: 50 }] } }];
-  if (document.getElementById("show-z").checked) series.push({ name: "Score (Z-score)", type: "line", data: V.history.score_z, symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: "#16202e" }, itemStyle: { color: "#16202e" } });
+  const colors = [C.teal, C.coral, C.violet, C.warn];
+  const series = [{ name: "Score", type: "line", data: V.history.score, symbol: "none", lineStyle: { width: 2.5, color: C.main }, itemStyle: { color: C.main },
+    markArea: { silent: true, itemStyle: { color: alpha(C.bad, .07) }, label: { color: C.badInk, fontSize: 11, position: "insideTop" }, data: CRISES.map(([a, b, n]) => [{ name: n, xAxis: a }, { xAxis: b }]) },
+    markLine: { silent: true, symbol: "none", lineStyle: { color: C.line2, type: "dashed" }, label: { show: false }, data: [{ yAxis: 50 }] } }];
+  if (document.getElementById("show-z").checked) series.push({ name: "Score (Z-score)", type: "line", data: V.history.score_z, symbol: "none", lineStyle: { width: 1.5, type: "dashed", color: C.ink }, itemStyle: { color: C.ink } });
   if (document.getElementById("show-pillars").checked) S.macro.pillars.forEach((p, k) => series.push({ name: p.label, type: "line", data: V.history.pillars[p.id], symbol: "none", lineStyle: { width: 1.2, color: colors[k] }, itemStyle: { color: colors[k] } }));
   chart("history").setOption({ grid: { left: 40, right: 16, top: 30, bottom: 50 }, legend: { top: 0, icon: "roundRect", itemHeight: 4 },
     tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) }, xAxis: { type: "category", data: S.macro.dates, axisLabel: { formatter: (v) => v.slice(0, 4) } },
-    yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } }, dataZoom: [{ type: "slider", height: 18, bottom: 8 }, { type: "inside" }], series }, true);
+    yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: C.grid } } }, dataZoom: [{ type: "slider", height: 18, bottom: 8 }, { type: "inside" }], series }, true);
 }
 
 function indLabel(i) {
@@ -1229,10 +1306,10 @@ function renderContrib() {
   const inds = viewIndicators().filter((i) => C[i.id]).sort((a, b) => C[a.id].eff_weight - C[b.id].eff_weight);
   chart("contrib").setOption({ grid: { left: 210, right: 40, top: 8, bottom: 20 },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (a) => `${a[0].name}<br>Apporte <b>${fmt(a[1].value)}</b> pt sur ${fmt(a[0].value)} possibles` },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef0f3" } } }, yAxis: { type: "category", data: inds.map(indLabel), axisLabel: { fontSize: 12, width: 200, overflow: "truncate" } },
-    series: [{ type: "bar", data: inds.map((i) => C[i.id].eff_weight), barWidth: 14, itemStyle: { color: "#e6eef8", borderRadius: 3 } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: C.grid } } }, yAxis: { type: "category", data: inds.map(indLabel), axisLabel: { fontSize: 12, width: 200, overflow: "truncate" } },
+    series: [{ type: "bar", data: inds.map((i) => C[i.id].eff_weight), barWidth: 14, itemStyle: { color: C.soft, borderRadius: 3 } },
       { type: "bar", data: inds.map((i) => ({ value: C[i.id].points, itemStyle: { color: scoreColor(i.latest.score) } })), barWidth: 14, barGap: "-100%", itemStyle: { borderRadius: 3 },
-        label: { show: true, position: "right", fontSize: 11, color: "#5d6878", formatter: (p) => fmt(p.value) } }] }, true);
+        label: { show: true, position: "right", fontSize: 11, color: C.muted, formatter: (p) => fmt(p.value) } }] }, true);
 }
 
 function renderTable() {
@@ -1255,9 +1332,9 @@ function renderDetail() {
   document.getElementById("detail-hint").textContent = `Valeur brute (${i.unit}) et score sur 100 : ${how}.`;
   chart("detail").setOption({ grid: { left: 48, right: 40, top: 30, bottom: 30 }, legend: { top: 0, icon: "roundRect", itemHeight: 4 },
     tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v, 2) }, xAxis: { type: "category", data: S.macro.dates, axisLabel: { formatter: (v) => v.slice(0, 4) } },
-    yAxis: [{ type: "value", name: i.unit, scale: true, splitLine: { lineStyle: { color: "#eef0f3" } } }, { type: "value", name: "score", min: 0, max: 100, splitLine: { show: false } }],
-    series: [{ name: "Valeur brute", type: "line", data: i.history.raw, symbol: "none", lineStyle: { width: 2, color: "#1f4e8c" }, itemStyle: { color: "#1f4e8c" } },
-      { name: "Score /100", type: "line", yAxisIndex: 1, data: i.history.score, symbol: "none", lineStyle: { width: 1.2, color: "#c27c0e", type: "dashed" }, itemStyle: { color: "#c27c0e" } }] }, true);
+    yAxis: [{ type: "value", name: i.unit, scale: true, splitLine: { lineStyle: { color: C.grid } } }, { type: "value", name: "score", min: 0, max: 100, splitLine: { show: false } }],
+    series: [{ name: "Valeur brute", type: "line", data: i.history.raw, symbol: "none", lineStyle: { width: 2, color: C.main }, itemStyle: { color: C.main } },
+      { name: "Score /100", type: "line", yAxisIndex: 1, data: i.history.score, symbol: "none", lineStyle: { width: 1.2, color: C.warn, type: "dashed" }, itemStyle: { color: C.warn } }] }, true);
 }
 
 document.addEventListener("DOMContentLoaded", () => (window.echarts ? init() : window.addEventListener("load", init)));
