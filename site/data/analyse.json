@@ -23,7 +23,7 @@
   },
   "combine": {
    "correlation_moyenne": 0.014,
-   "pct_dates_correlation_positive": 53.0,
+   "pct_dates_correlation_positive": 55.0,
    "ecart_quintiles_perf12m": -9.6,
    "ecart_quintiles_relatif_secteur": -9.4,
    "dispersion_top": 30.8,
@@ -36,12 +36,12 @@
   "score_moyen_par_recommandation": {
    "buy": 52.2,
    "hold": 53.5,
-   "none": 51.9,
+   "none": 51.8,
    "strong_buy": 48.4,
-   "underperform": 55.1
+   "underperform": 55.3
   },
   "correlations_entre_familles": {
-   "f_valorisation/f_dynamique": -0.12,
+   "f_valorisation/f_dynamique": -0.13,
    "f_valorisation/f_risque": 0.24,
    "f_valorisation/f_qualite": -0.23,
    "f_dynamique/f_risque": 0.41,
@@ -49,9 +49,9 @@
    "f_risque/f_qualite": -0.07
   },
   "secteurs_poids_tendance": 0.4,
-  "secteurs_correlation_classement_avec_vs_sans_tendance": 0.95,
+  "secteurs_correlation_classement_avec_vs_sans_tendance": 0.96,
   "secteurs_ecart_type_part_entreprises": 6.0,
-  "secteurs_ecart_type_part_tendance": 28.2
+  "secteurs_ecart_type_part_tendance": 28.0
  },
  "macro": {
   "commun": {
@@ -343,7 +343,7 @@
      {
       "tranche": "> 65",
       "mois": 75,
-      "perf_12m": 0.0,
+      "perf_12m": -0.0,
       "pct_positif": 49.0,
       "pire_baisse_12m": -9.4
      }
@@ -353,7 +353,7 @@
       "rendement_annuel": 1.8,
       "volatilite": 17.3,
       "pire_baisse": -56.2,
-      "ratio_rendement_risque": 0.11,
+      "ratio_rendement_risque": 0.1,
       "mois_investis_pct": null
      },
      "investi_si_score_45": {
@@ -371,7 +371,7 @@
       "mois_investis_pct": 79.0
      },
      "investi_si_score_55": {
-      "rendement_annuel": -0.1,
+      "rendement_annuel": -0.2,
       "volatilite": 12.4,
       "pire_baisse": -42.2,
       "ratio_rendement_risque": -0.01,
