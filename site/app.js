@@ -312,9 +312,9 @@ function route() {
   disposeCharts();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const page = parts[0] || "";
-  const nav = { "": "home", macro: "macro", secteur: "home", entreprises: "companies", entreprise: "companies", pools: "pools", methode: "methode" }[page];
+  const nav = { "": "home", macro: "macro", secteur: "home", entreprises: "companies", entreprise: "companies", pools: "pools", methode: "methode", portefeuille: "portefeuille" }[page];
   document.querySelectorAll(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.route === nav));
-  document.getElementById("zone-switch").hidden = page === "entreprise" || page === "methode";
+  document.getElementById("zone-switch").hidden = ["entreprise", "methode", "portefeuille"].includes(page);
   Pool.refresh();
   const app = document.getElementById("app");
   if (page === "macro") return pageMacro(app);
@@ -331,6 +331,7 @@ function route() {
     return pagePools(app);
   }
   if (page === "methode") return pageMethod(app);
+  if (page === "portefeuille") return pagePortfolio(app);
   return pageHome(app);
 }
 
@@ -1357,6 +1358,118 @@ function renderDetail() {
     yAxis: [{ type: "value", name: i.unit, scale: true, splitLine: { lineStyle: { color: C.grid } } }, { type: "value", name: "score", min: 0, max: 100, splitLine: { show: false } }],
     series: [{ name: "Valeur brute", type: "line", data: i.history.raw, symbol: "none", lineStyle: { width: 2, color: C.main }, itemStyle: { color: C.main } },
       { name: "Score /100", type: "line", yAxisIndex: 1, data: i.history.score, symbol: "none", lineStyle: { width: 1.2, color: C.warn, type: "dashed" }, itemStyle: { color: C.warn } }] }, true);
+}
+
+/* ---------- portefeuille privé (fictif ; hors score) ---------- */
+// Même règle que valuate() de scripts/portfolio.py : dernier cours connu à la date d'achat ou juste avant.
+function valuateLine(item, detail) {
+  if (!detail) return { status: "indisponible", buyPrice: null, perf: null, value: null };
+  let buy = null;
+  const { dates = [], close = [] } = detail.prices || {};
+  for (let k = 0; k < dates.length && dates[k] <= item.date; k++) if (close[k] != null) buy = close[k];
+  if (!buy) return { status: "cours d'achat indisponible", buyPrice: null, perf: null, value: null };
+  const perf = detail.price / buy - 1;
+  return { status: "ok", buyPrice: buy, perf, value: item.amount * (1 + perf) };
+}
+const PF_KEY = "pf-code";
+const pfCode = { get() { try { return sessionStorage.getItem(PF_KEY) || ""; } catch { return S.pfCode || ""; } },
+  set(v) { S.pfCode = v; try { v ? sessionStorage.setItem(PF_KEY, v) : sessionStorage.removeItem(PF_KEY); } catch { /* session seulement */ } } };
+async function portfolioApi(method, body, query = "") {
+  const r = await fetch(`/api/portefeuille${query}`, { method, headers: { "x-code": pfCode.get(), "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  let data = {};
+  try { data = await r.json(); } catch { /* réponse vide */ }
+  return { status: r.status, data };
+}
+const cur = (c) => ({ EUR: " €", USD: " $" }[c] || "");
+const euro = (x) => (x == null ? "–" : fmt(x, 0) + " €");
+
+function pfLogin(app, msg = "") {
+  app.innerHTML = `<section class="card pf-login"><h2>Portefeuille</h2>
+    <p class="hint">Espace privé : les lignes ne sont stockées ni dans le site ni dans le dépôt public. Saisissez le code du portefeuille.</p>
+    <form id="pf-login" class="pf-row"><input type="password" id="pf-code" placeholder="Code du portefeuille" autocomplete="current-password" required>
+    <button class="btn" type="submit">Ouvrir</button></form>${msg ? `<p class="status">${esc(msg)}</p>` : ""}</section>`;
+  document.getElementById("pf-login").addEventListener("submit", (e) => { e.preventDefault(); pfCode.set(document.getElementById("pf-code").value.trim()); route(); });
+  document.getElementById("pf-code").focus();
+}
+
+async function pagePortfolio(app) {
+  if (!pfCode.get()) return pfLogin(app);
+  app.innerHTML = '<div class="card hint">Chargement du portefeuille…</div>';
+  const { status, data } = await portfolioApi("GET");
+  if (status === 401 || status === 429) { pfCode.set(""); return pfLogin(app, data.error || "Code incorrect."); }
+  if (status !== 200) { app.innerHTML = `<div class="card"><h2>Portefeuille</h2><p class="status">${esc(data.error || "Portefeuille indisponible pour le moment.")}</p></div>`; return; }
+  const items = data.items || [];
+  const tickers = [...new Set(items.map((i) => i.ticker))];
+  const [details] = await Promise.all([loadDetails(tickers), loadPredictions(tickers)]);
+  const byT = Object.fromEntries(tickers.map((t, k) => [t, details[k]]));
+  const lines = items.map((i) => ({ i, d: byT[i.ticker], v: valuateLine(i, byT[i.ticker]), p: S.pred?.companies?.[i.ticker] }));
+  const ok = lines.filter((l) => l.v.status === "ok");
+  const invested = ok.reduce((s, l) => s + l.i.amount, 0), value = ok.reduce((s, l) => s + l.v.value, 0);
+  const perf = invested ? value / invested - 1 : null;
+  const plats = {};
+  ok.forEach((l) => (plats[l.i.platform] = (plats[l.i.platform] || 0) + l.v.value));
+  const allPlats = [...new Set(items.map((i) => i.platform))];
+  const today = new Date().toISOString().slice(0, 10);
+  const row = (l) => {
+    const name = l.d ? shortName(l.d.name) : l.i.ticker, h = l.p?.h || {};
+    const up = l.d?.target_price && l.d?.price ? l.d.target_price / l.d.price - 1 : null;
+    return `<tr><td class="name">${l.d ? `<a href="#/entreprise/${encodeURIComponent(l.i.ticker)}">${esc(name)}</a>` : esc(name)}<div class="src">${esc(l.i.ticker)}</div></td>
+      <td>${esc(l.i.platform)}</td><td class="nowrap">${new Date(l.i.date + "T12:00:00").toLocaleDateString("fr-FR")}</td>
+      <td class="num">${euro(l.i.amount)}</td>
+      <td class="num">${l.v.buyPrice != null ? fmt(l.v.buyPrice, 2) + cur(l.d?.currency) : "–"}</td>
+      <td class="num">${l.v.status === "ok" ? euro(l.v.value) : `<span class="status">${esc(l.v.status)}</span>`}</td>
+      <td class="num ${pctCls(l.v.perf)}">${l.v.perf != null ? signed(l.v.perf * 100) + " %" : "–"}</td>
+      <td class="num">${l.d ? scorePill(l.d.score) : "–"}</td>
+      <td>${l.d ? `${RECO[l.d.recommendation] || "–"}${up != null ? `<div class="src">objectif ${signed(up * 100)} %</div>` : ""}` : "–"}</td>
+      <td class="num"><b style="color:${probColor(h["1a"]?.p)}">${pct(h["1a"]?.p)}</b> · <b style="color:${probColor(h["3a"]?.p)}">${pct(h["3a"]?.p)}</b></td>
+      <td><button class="btn ghost small" data-del="${esc(l.i.id)}" aria-label="Supprimer la ligne ${esc(name)}">Supprimer</button></td></tr>`;
+  };
+  app.innerHTML = `
+    <section class="sector-head card"><div><div class="label">Portefeuille fictif · ${items.length} ligne${items.length > 1 ? "s" : ""} · hors score</div><h1>Mon portefeuille</h1>
+      <div class="decomp"><span>Compte rendu par mail après chaque mise à jour des données</span><button class="btn ghost small" id="pf-lock">Verrouiller</button></div></div>
+      <div class="big-score ${pctCls(perf)}">${perf != null ? signed(perf * 100) : "–"}<small> %</small></div></section>
+    <section class="kpis">${kpi("Total investi", euro(invested))}${kpi("Valeur actuelle", euro(value))}${kpi("Plus ou moins-value", (value - invested >= 0 ? "+" : "") + euro(value - invested), pctCls(value - invested))}${kpi("Plateformes", String(Object.keys(plats).length || "–"))}</section>
+    <section class="card"><div class="card-head"><h2>Ajouter une ligne</h2></div>
+      <form id="pf-add" class="pf-form">
+        <div class="add-box"><input type="search" id="pf-search" placeholder="Action : nom ou code…" autocomplete="off" required><div class="suggest" id="pf-suggest" hidden></div></div>
+        <input type="number" id="pf-amount" min="1" max="10000000" step="0.01" placeholder="Montant (€)" required>
+        <input type="text" id="pf-platform" list="pf-platforms" maxlength="40" placeholder="Plateforme (ex. Boursorama)" required>
+        <datalist id="pf-platforms">${allPlats.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+        <input type="date" id="pf-date" max="${today}" min="2000-01-01" value="${today}" required>
+        <button class="btn" type="submit">Ajouter</button>
+      </form><p class="status" id="pf-error" hidden></p></section>
+    ${Object.keys(plats).length ? `<section class="card"><div class="card-head"><h2>Répartition par plateforme</h2></div>${Object.entries(plats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="pf-plat"><span>${esc(k)}</span><span class="bar"><span style="width:${(v / value) * 100}%;background:var(--gold)"></span></span><b class="num">${euro(v)}</b></div>`).join("")}</section>` : ""}
+    <section class="card"><div class="card-head"><h2>Lignes</h2></div>
+      ${items.length ? `<div class="table-wrap"><table class="table pf-table"><thead><tr><th>Action</th><th>Plateforme</th><th>Achat</th><th class="num">Investi</th><th class="num">Cours d'achat</th><th class="num">Valeur</th><th class="num">Perf.</th><th class="num">Score</th><th>Analystes</th><th class="num">Prévisions 1 an · 3 ans</th><th></th></tr></thead><tbody>${lines.map(row).join("")}</tbody></table></div>` : '<p class="hint">Aucune ligne pour l\'instant : ajoutez votre première action ci-dessus. Aucun mail n\'est envoyé tant que le portefeuille est vide.</p>'}
+      <p class="src">Performance calculée sur le cours de l'action (dernier cours hebdomadaire connu à la date d'achat), sans l'effet de change euro/dollar. Score, avis des analystes et prévisions sont repris du site et restent séparés ; pas un conseil en investissement.</p></section>`;
+  document.getElementById("pf-lock").addEventListener("click", () => { pfCode.set(""); route(); });
+  let chosen = null;
+  const search = document.getElementById("pf-search"), sug = document.getElementById("pf-suggest"), err = document.getElementById("pf-error");
+  search.addEventListener("input", () => {
+    chosen = null;
+    const q = norm(search.value.trim());
+    if (q.length < 2) { sug.hidden = true; return; }
+    const hits = (S.companies?.companies || []).filter((c) => norm(c.n).includes(q) || c.t.toLowerCase().startsWith(q)).slice(0, 8);
+    sug.innerHTML = hits.map((c) => `<div data-t="${esc(c.t)}"><b>${esc(c.n)}</b> <span class="src">${esc(c.t)} · ${esc(sectorLabel(c.s))}</span></div>`).join("") || '<div class="src">Aucun résultat</div>';
+    sug.hidden = false;
+    sug.querySelectorAll("div[data-t]").forEach((el) => el.addEventListener("mousedown", () => { chosen = el.dataset.t; search.value = el.querySelector("b").textContent; sug.hidden = true; }));
+  });
+  search.addEventListener("blur", () => setTimeout(() => (sug.hidden = true), 150));
+  document.getElementById("pf-add").addEventListener("submit", async (e) => {
+    e.preventDefault(); err.hidden = true;
+    if (!chosen) { err.textContent = "Choisissez l'action dans la liste proposée."; err.hidden = false; return; }
+    const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+    const r = await portfolioApi("POST", { ticker: chosen, amount: Number(document.getElementById("pf-amount").value), platform: document.getElementById("pf-platform").value, date: document.getElementById("pf-date").value });
+    btn.disabled = false;
+    if (r.status === 401 || r.status === 429) { pfCode.set(""); return pfLogin(app, r.data.error); }
+    if (r.status !== 201) { err.textContent = r.data.error || "Ajout impossible pour le moment."; err.hidden = false; return; }
+    route();
+  });
+  app.querySelectorAll("button[data-del]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Supprimer cette ligne du portefeuille ?")) return;
+    const r = await portfolioApi("DELETE", null, `?id=${encodeURIComponent(b.dataset.del)}`);
+    if (r.status === 200) route(); else alert(r.data.error || "Suppression impossible pour le moment.");
+  }));
 }
 
 document.addEventListener("DOMContentLoaded", () => (window.echarts ? init() : window.addEventListener("load", init)));

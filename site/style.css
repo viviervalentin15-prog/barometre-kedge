@@ -338,3 +338,14 @@ h1, h2, h3 { letter-spacing: -.005em; }
   .theme-btn { order: 2; margin-left: auto; }
   .hsearch { order: 3; flex: 1 1 100%; }
 }
+
+/* ---------- portefeuille ---------- */
+.pf-row, .pf-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pf-form input, .pf-row input { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); }
+.pf-form .add-box { flex: 1 1 260px; } .pf-form .add-box input { width: 100%; min-width: 0; }
+.pf-form #pf-amount { width: 140px; } .pf-form #pf-platform { width: 210px; }
+.pf-login { max-width: 520px; } .pf-row input { flex: 1 1 220px; }
+.pf-plat { display: grid; grid-template-columns: 180px 1fr 110px; gap: 12px; align-items: center; padding: 5px 0; font-size: 14px; }
+.pf-table td { vertical-align: top; } .pf-table tbody tr { cursor: default; }
+@media (max-width: 700px) { .pf-plat { grid-template-columns: 110px 1fr 90px; } .pf-form #pf-amount, .pf-form #pf-platform, .pf-form input[type=date] { width: 100%; flex: 1 1 100%; } }
+.pf-table td.num, .pf-table td.nowrap { white-space: nowrap; }

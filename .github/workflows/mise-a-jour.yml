@@ -65,6 +65,16 @@ jobs:
       - name: Contrôle de santé des données
         run: python scripts/check_health.py --report sante.md
 
+      - name: Compte rendu du portefeuille par mail
+        if: always()
+        continue-on-error: true   # un échec du mail ne bloque jamais la collecte
+        env:
+          PORTFOLIO: ${{ vars.PORTFOLIO }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python scripts/portfolio.py
+
       # En cas de problème : un ticket GitHub « alerte-donnees » (e-mail au propriétaire du dépôt).
       - name: Ouvrir ou compléter une alerte
         if: failure()
