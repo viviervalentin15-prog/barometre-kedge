@@ -24,3 +24,12 @@ m3 = session_metrics(o3, c3)
 assert abs(m3["last"] + 3.0) < 1e-9 and abs(m3["avg12"] - 0.0) < 1e-9 and m3["n"] == 2, m3
 assert session_metrics(pd.Series(dtype=float), pd.Series(dtype=float)) == {}
 print("test_session : OK")
+
+# séance du jour en cours (collecte lancée avant la fermeture des marchés) : exclue
+from datetime import datetime, timezone
+day = pd.Timestamp("2026-11-19")
+m4 = session_metrics(o, c, now=datetime(2026, 11, 19, 14, 40, tzinfo=timezone.utc))
+assert m4["date"] == "2026-11-18", m4
+m5 = session_metrics(o, c, now=datetime(2026, 11, 19, 22, 30, tzinfo=timezone.utc))
+assert m5["date"] == "2026-11-19", m5
+print("test_session (séance en cours) : OK")

@@ -304,10 +304,19 @@ def eurusd() -> float:
 # ---------------------------------------------------------------------------
 # 3. Indicateurs
 # ---------------------------------------------------------------------------
-def session_metrics(o: pd.Series, c: pd.Series, n: int = 12) -> dict:
+MARKETS_CLOSED_UTC = 22  # après 22 h UTC, Paris (16 h 30) et New York (21 h) sont fermés
+
+
+def session_metrics(o: pd.Series, c: pd.Series, n: int = 12, now=None) -> dict:
     """Variation ouverture -> clôture (%) de la dernière séance complète et moyenne des n dernières.
-    Séances sans ouverture ou clôture valide (séance du jour en cours, ouverture nulle) ignorées."""
+    Séances sans ouverture ou clôture valide ignorées ; la séance du jour est exclue tant que les
+    marchés ne sont pas fermés (sinon le « cours de clôture » ne serait que le cours du moment)."""
+    now = now or datetime.now(timezone.utc)
     df = pd.DataFrame({"o": o, "c": c}).dropna()
+    if df.empty:
+        return {}
+    if now.hour < MARKETS_CLOSED_UTC:
+        df = df[df.index.normalize() < pd.Timestamp(now.date())]
     df = df[(df.o > 0) & (df.c > 0)]
     r = (df.c / df.o - 1) * 100
     r = r[r.abs() < 50]   # garde-fou contre une ouverture aberrante
