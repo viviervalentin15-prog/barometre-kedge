@@ -581,6 +581,17 @@ def main(demo: bool, rebuild_universe: bool) -> None:
                 "industries": sorted(members["industry"].dropna().unique().tolist()),
                 "index": [rnd(x, 2) for x in index.resample("W-FRI").last().reindex(weekly_dates)],
             })
+        # Même échelle pour les deux parts : la tendance varie bien plus d'un secteur à l'autre
+        # que la note des entreprises ; sans correction, elle dicterait le classement malgré ses 40 %.
+        # On convertit chaque part en Z-score entre secteurs, ramené sur 0-100 (50 + 15 x Z).
+        def rescale(key):
+            vals = np.array([it[key] if it[key] is not None else np.nan for it in items], dtype=float)
+            mu, sd = np.nanmean(vals), np.nanstd(vals)
+            return [rnd(float(np.clip(50 + 15 * (v - mu) / sd, 0, 100)), 1) if sd and not np.isnan(v) else 50.0 for v in vals]
+        comp_n, trend_n = rescale("company_score"), rescale("trend_score")
+        for it, cn, tn in zip(items, comp_n, trend_n):
+            it["company_norm"], it["trend_norm"] = cn, tn
+            it["score"] = rnd(float(np.clip(sc["company_weight"] * cn + sc["trend_weight"] * tn + it["macro_tilt"], 0, 100)), 1)
         items.sort(key=lambda x: -(x["score"] or 0))
         sector_out["views"][view] = {"macro_score": rnd(macro_score, 1), "sectors": items}
 
@@ -656,7 +667,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     covered = df["score"].notna().sum()
     log(f"\n{covered}/{len(df)} entreprises notées. Classement des secteurs (vue commune) :")
     for s in sector_out["views"]["commun"]["sectors"]:
-        log(f"  {s['label']:<24} {s['score']:>5}  (entreprises {s['company_score']}, tendance {s['trend_score']}, macro {s['macro_tilt']:+})  n={s['n']}")
+        log(f"  {s['label']:<24} {s['score']:>5}  (entreprises {s['company_score']} -> {s['company_norm']}, tendance {s['trend_score']} -> {s['trend_norm']}, macro {s['macro_tilt']:+})  n={s['n']}")
 
 
 if __name__ == "__main__":

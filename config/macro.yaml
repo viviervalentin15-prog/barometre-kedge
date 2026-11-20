@@ -9,6 +9,9 @@
 #              "target"          -> on mesure l'écart à une cible,
 #                                   plus on est proche, mieux c'est
 #  - target  : la cible (uniquement pour method: target)
+#  - lag_months : délai de publication. Un chiffre du mois M n'est connu qu'au
+#                 mois M + lag : le score de chaque mois n'utilise donc que ce qui
+#                 était réellement publié à ce moment-là (0 pour les données de marché).
 # =====================================================================
 
 start_date: "2005-01-01"
@@ -32,6 +35,7 @@ zones:
 indicators:
   # ---------------- CROISSANCE (30) ----------------
   - id: cli_us
+    lag_months: 1
     name: "Indicateur avancé OCDE (CLI)"
     zone: US
     pillar: croissance
@@ -41,6 +45,7 @@ indicators:
     source: { type: oecd_cli, area: USA }
 
   - id: cli_ez
+    lag_months: 1
     name: "Indicateur avancé OCDE (CLI)"
     zone: EZ
     pillar: croissance
@@ -50,6 +55,7 @@ indicators:
     source: { type: oecd_cli, area: EA20 }
 
   - id: gdp_us
+    lag_months: 1
     name: "PIB réel, variation sur 1 an"
     zone: US
     pillar: croissance
@@ -59,6 +65,7 @@ indicators:
     source: { type: fred, series: GDPC1, transform: yoy }
 
   - id: gdp_ez
+    lag_months: 1
     name: "PIB réel, variation sur 1 an"
     zone: EZ
     pillar: croissance
@@ -68,6 +75,7 @@ indicators:
     source: { type: eurostat_gdp }
 
   - id: unemp_us
+    lag_months: 1
     name: "Taux de chômage"
     zone: US
     pillar: croissance
@@ -77,6 +85,7 @@ indicators:
     source: { type: fred, series: UNRATE }
 
   - id: unemp_ez
+    lag_months: 1
     name: "Taux de chômage"
     zone: EZ
     pillar: croissance
@@ -87,6 +96,7 @@ indicators:
 
   # ---------------- INFLATION (20) ----------------
   - id: cpi_us
+    lag_months: 1
     name: "Inflation (CPI), écart à 2 %"
     zone: US
     pillar: inflation
@@ -97,6 +107,7 @@ indicators:
     source: { type: fred, series: CPIAUCSL, transform: yoy }
 
   - id: hicp_ez
+    lag_months: 1
     name: "Inflation (HICP), écart à 2 %"
     zone: EZ
     pillar: inflation
@@ -184,6 +195,7 @@ indicators:
     source: { type: fred, series: DCOILBRENTEU }
 
   - id: epu
+    lag_months: 1
     name: "Incertitude politique mondiale (EPU)"
     zone: MONDE
     pillar: risque

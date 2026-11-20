@@ -268,7 +268,7 @@ function pageHome(app) {
     </section>
     <section class="card">
       <div class="card-head"><h2>De quoi est fait le score de chaque secteur ?</h2></div>
-      <p class="hint">Score = ${fmt(S.sectors.method.company_weight * 100, 0)} % note des entreprises (critères comparés à tout l'univers) + ${fmt(S.sectors.method.trend_weight * 100, 0)} % tendance de marché + ajustement selon le baromètre macro (cycliques favorisés quand le macro est au-dessus de 50, défensifs sinon).</p>
+      <p class="hint">Score = ${fmt(S.sectors.method.company_weight * 100, 0)} % note des entreprises (critères comparés à tout l'univers) + ${fmt(S.sectors.method.trend_weight * 100, 0)} % tendance de marché, les deux ramenées sur la même échelle pour que chacune pèse vraiment son poids, + ajustement selon le baromètre macro (cycliques favorisés quand le macro est au-dessus de 50, défensifs sinon).</p>
       <div id="sector-decomp" class="chart" style="height:${sv.sectors.length * 30 + 60}px"></div>
     </section>` : ""}`;
   if (!sv) return;
@@ -286,11 +286,11 @@ function pageHome(app) {
     xAxis: { type: "value", min: -10, max: 100, splitLine: { lineStyle: { color: "#eef0f3" } } },
     yAxis: { type: "category", data: items.map((s) => s.label) },
     series: [
-      { name: "Entreprises", type: "bar", stack: "s", data: items.map((s) => +(m.company_weight * s.company_score).toFixed(1)), itemStyle: { color: "#1f4e8c" } },
-      { name: "Tendance", type: "bar", stack: "s", data: items.map((s) => +(m.trend_weight * s.trend_score).toFixed(1)), itemStyle: { color: "#7ea6d8" } },
+      { name: "Entreprises", type: "bar", stack: "s", data: items.map((s) => +(m.company_weight * (s.company_norm ?? s.company_score)).toFixed(1)), itemStyle: { color: "#1f4e8c" } },
+      { name: "Tendance", type: "bar", stack: "s", data: items.map((s) => +(m.trend_weight * (s.trend_norm ?? s.trend_score)).toFixed(1)), itemStyle: { color: "#7ea6d8" } },
       { name: "Ajustement macro", type: "bar", stack: "s", data: items.map((s) => s.macro_tilt), itemStyle: { color: "#c27c0e" } },
       { name: "Score", type: "scatter", symbolSize: 0, tooltip: { show: false },
-        data: items.map((s) => m.company_weight * s.company_score + m.trend_weight * s.trend_score + Math.max(s.macro_tilt, 0)),
+        data: items.map((s) => m.company_weight * (s.company_norm ?? s.company_score) + m.trend_weight * (s.trend_norm ?? s.trend_score) + Math.max(s.macro_tilt, 0)),
         label: { show: true, position: "right", distance: 8, color: "#16202e", fontWeight: 600, formatter: (p) => "= " + fmt(items[p.dataIndex].score) } },
     ],
   });
@@ -333,8 +333,8 @@ function pageSector(app, id) {
         <div class="label">${TYPE_LABEL[s.type]} · ${s.n} entreprises · ${capLabel(s.cap_usd / 1e9)}</div>
         <h1>${s.label}</h1>
         <div class="decomp">
-          <span>Entreprises <b>${fmt(s.company_score)}</b> × ${fmt(m.company_weight * 100, 0)} %</span>
-          <span>Tendance <b>${fmt(s.trend_score)}</b> × ${fmt(m.trend_weight * 100, 0)} %</span>
+          <span title="Note brute ${fmt(s.company_score)}, ramenée sur la même échelle que la tendance">Entreprises <b>${fmt(s.company_norm ?? s.company_score)}</b> × ${fmt(m.company_weight * 100, 0)} %</span>
+          <span title="Tendance brute ${fmt(s.trend_score)}, ramenée sur la même échelle que la note des entreprises">Tendance <b>${fmt(s.trend_norm ?? s.trend_score)}</b> × ${fmt(m.trend_weight * 100, 0)} %</span>
           <span>Ajustement macro <b class="${pctCls(s.macro_tilt)}">${signed(s.macro_tilt)}</b></span>
         </div>
       </div>
@@ -1054,9 +1054,9 @@ async function pageMethod(app) {
     <nav class="toc"><a href="#m-macro">Baromètre</a><a href="#m-ent">Entreprises</a><a href="#m-sect">Secteurs</a><a href="#m-prev">Prévisions</a><a href="#m-tests">Tests</a><a href="#m-lim">Limites</a><a href="#m-lex">Lexique</a></nav>
 
     <h2 id="m-macro">1. Baromètre macro</h2>
-    <p>${M.indicators.length} indicateurs, regroupés en 4 piliers (grille du cours : ${M.pillars.map((p) => `${p.label.toLowerCase()} ${p.weight} %`).join(", ")}). Chaque indicateur est ramené entre 0 et 100 par un ${g("Min-Max")} <b>en temps réel</b> : à chaque date, seuls les chiffres déjà connus servent au calcul (les 2 % de valeurs extrêmes sont écrêtées). Les indicateurs de risque sont inversés et l'inflation est notée selon son écart à la cible de 2 %. On fait la moyenne pondérée par pilier, puis des piliers. Un ${g("Z-score")} est calculé en parallèle comme test de robustesse.</p>
-    <div class="table-wrap"><table class="table"><thead><tr><th>Indicateur</th><th>Zone</th><th>Pilier</th><th class="num">Poids</th><th>Notation</th><th>Source</th><th>Dernière donnée</th></tr></thead><tbody>
-      ${M.indicators.map((i) => `<tr><td>${g(i.name)}</td><td>${ZONE_LABEL[i.zone]}</td><td>${pl[i.pillar].label}</td><td class="num">${i.weight}</td><td>${methodLabel[i.method]}</td><td class="src">${esc(i.source)}</td><td>${i.last_obs || "–"}</td></tr>`).join("")}
+    <p>${M.indicators.length} indicateurs, regroupés en 4 piliers (grille du cours : ${M.pillars.map((p) => `${p.label.toLowerCase()} ${p.weight} %`).join(", ")}). Chaque indicateur est ramené entre 0 et 100 par un ${g("Min-Max")} <b>en temps réel</b> : à chaque date, seuls les chiffres déjà connus servent au calcul (les 2 % de valeurs extrêmes sont écrêtées). Les chiffres économiques sont décalés de leur délai de publication : le PIB, le chômage ou l'inflation d'un mois ne comptent qu'à partir du mois où ils sont réellement publiés. Les indicateurs de risque sont inversés et l'inflation est notée selon son écart à la cible de 2 %. On fait la moyenne pondérée par pilier, puis des piliers. Un ${g("Z-score")} est calculé en parallèle comme test de robustesse.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Indicateur</th><th>Zone</th><th>Pilier</th><th class="num">Poids</th><th>Notation</th><th class="num">Délai de publication</th><th>Source</th><th>Dernière donnée</th></tr></thead><tbody>
+      ${M.indicators.map((i) => `<tr><td>${g(i.name)}</td><td>${ZONE_LABEL[i.zone]}</td><td>${pl[i.pillar].label}</td><td class="num">${i.weight}</td><td>${methodLabel[i.method]}</td><td class="num">${i.lag_months ? i.lag_months + " mois" : "–"}</td><td class="src">${esc(i.source)}</td><td>${i.last_obs || "–"}</td></tr>`).join("")}
     </tbody></table></div>
     ${M.recession ? `<p>À part du score : la <b>probabilité de récession</b> américaine à 12 mois, modèle de la Fed de New York (Estrella et Mishkin) : P = N(−0,5333 − 0,6330 × écart de taux 10 ans – 3 mois).</p>` : ""}
 
@@ -1117,6 +1117,7 @@ function pageMacro(app) {
       <label class="check"><input type="checkbox" id="show-z"> Comparer au Z-score</label></div>
       <div id="history" class="chart chart-lg"></div></section>
     ${recessionSection()}
+    <div id="market-lt"></div>
     <section class="grid-2">
       <div class="card"><div class="card-head"><h2>Ce qui pèse dans le score aujourd'hui</h2></div>
         <p class="hint">Barre pleine : points apportés au score. Barre claire : poids maximal de l'indicateur.</p><div id="contrib" class="chart chart-contrib"></div></div>
@@ -1139,6 +1140,27 @@ function pageMacro(app) {
   if (!S.selected || !inds.find((i) => i.id === S.selected)) S.selected = inds[0].id;
   renderDetail();
   drawRecession();
+  loadPredictions().then(() => { const el = document.getElementById("market-lt"); if (el) el.innerHTML = marketSection(); });
+}
+
+/* Prévision du marché à long terme par la valorisation (séparée du score) */
+function marketSection() {
+  const mk = S.pred?.market;
+  if (!mk || !Object.keys(mk).length) return "";
+  const verdict = (erp) => erp == null ? "" : erp >= 4 ? ["Actions attractives face aux obligations", "#1f8a5b"] : erp >= 2 ? ["Écart modéré avec les obligations", "#8a8f98"] : ["Actions chères face aux obligations", "#c0392b"];
+  const card = (z) => { const x = mk[z]; if (!x) return ""; const [v, col] = verdict(x.erp) || ["", ""];
+    return `<div class="card pred-card"><div class="label">${z === "US" ? "Actions américaines (S&P 500)" : "Actions de la zone euro (Euro Stoxx)"}</div>
+      <div class="pred-p" style="color:${col}">${fmt(x.expected_nominal, 1)} %<small class="muted" style="font-size:14px;font-weight:400"> par an</small></div>
+      <div class="hint">rendement annuel attendu à long terme (≈ ${fmt(x.expected_real, 1)} % réel + ${fmt(x.inflation, 1)} % d'inflation attendue)</div>
+      <div class="pred-meta">
+        <span>${g("PER")} du marché <b>${fmt(x.pe, 1)}</b> → rendement des bénéfices <b>${fmt(x.earnings_yield, 2)} %</b></span>
+        <span>Taux réel à 10 ans <b>${fmt(x.real_yield, 2)} %</b>${x.approx_real ? " (approché : taux AAA 10 ans − 2 %)" : ""}</span>
+        <span>Prime de risque des actions <b>${fmt(x.erp, 2)} point${Math.abs(x.erp) >= 2 ? "s" : ""}</b> : <b style="color:${col}">${v}</b></span>
+      </div></div>`; };
+  return `<section class="card pred"><div class="card-head"><h2>Prévision du marché à long terme</h2><span class="pill">séparée du score</span></div>
+    <p class="hint">Sur longue période, le rendement réel des actions est proche de leur <b>rendement des bénéfices</b> (l'inverse du PER du marché) : plus le marché est cher, plus le rendement attendu est faible (Campbell et Shiller). La <b>prime de risque</b> compare ce rendement au taux réel des obligations d'État. Repères usuels : au-dessus de 4 points, les actions sont attractives ; sous 2 points, elles sont chères. Horizon : plusieurs années, au-delà de 3 ans.</p>
+    <div class="pred-grid two">${card("US")}${card("EZ")}</div>
+    <p class="src">PER agrégé pondéré par la capitalisation, calculé sur les entreprises du site (les entreprises en perte comptent pour un bénéfice nul). Relation documentée par la recherche, mais non testée sur ce site faute d'historique de valorisation. Pas un conseil en investissement.</p></section>`;
 }
 
 /* « Comment s'en servir ? » : chiffres lus dans data/analyse.json (scripts/analyse_decision.py) */

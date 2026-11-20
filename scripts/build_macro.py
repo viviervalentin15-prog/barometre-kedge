@@ -280,6 +280,10 @@ def main(demo: bool = False) -> None:
     for ind in indicators:
         s, status, source_label = load_indicator(ind, demo, log)
         last_obs = s.index.max() if len(s) else None
+        lag = int(ind.get("lag_months", 0) or 0)
+        if lag and len(s):   # le chiffre du mois M n'est connu qu'au mois M + lag
+            s = s.copy()
+            s.index = s.index + pd.DateOffset(months=lag)
         full = s.reindex(s.index.union(months)).sort_index().ffill(limit=FFILL_LIMIT).reindex(months)
         raw[ind["id"]] = full
         own = s.reindex(s.index.union(months)).sort_index().ffill(limit=FFILL_LIMIT)
@@ -343,7 +347,7 @@ def main(demo: bool = False) -> None:
         "indicators": [{
             "id": i["id"], "name": i["name"], "zone": i["zone"], "pillar": i["pillar"],
             "weight": i["weight"], "method": i["method"], "target": i.get("target"),
-            "unit": i["unit"], **meta[i["id"]],
+            "unit": i["unit"], "lag_months": int(i.get("lag_months", 0) or 0), **meta[i["id"]],
             "latest": {"raw": r(raw_df[i["id"]].iloc[-1], 2), "score": r(mm_df[i["id"]].iloc[-1]),
                        "score_z": r(z_df[i["id"]].iloc[-1])},
             "history": {"raw": [r(x, 2) for x in raw_df[i["id"]]],

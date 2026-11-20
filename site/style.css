@@ -292,3 +292,5 @@ abbr.g { text-decoration: underline dotted var(--muted); text-underline-offset: 
   .lexique { grid-template-columns: 1fr; }
   .pred-p { font-size: 28px; }
 }
+.pred-grid.two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 900px) { .pred-grid.two { grid-template-columns: 1fr; } }

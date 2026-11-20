@@ -412,6 +412,7 @@ def run(demo: bool) -> None:
         "weights": {h: {m: rnd(v) for m, v in weights[h].items()} for h in HORIZONS},
         "periode": [f"{P.index[first]:%Y-%m}", f"{P.index[-1]:%Y-%m}"],
         "drift": {z: rnd(v) for z, v in drift.items()},
+        "market": market_valuation(demo),
         "companies": companies,
     }
     write_split(out)
@@ -433,6 +434,44 @@ def write_split(out: dict) -> None:
     (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     if OUT.exists():
         OUT.unlink()
+
+
+def market_valuation(demo: bool) -> dict:
+    """Prévision du marché à long terme par la valorisation (séparée du score).
+    Rendement des bénéfices du marché (E/P, inverse du PER agrégé, pondéré par la capitalisation)
+    = rendement réel attendu à long terme (relation de Campbell et Shiller).
+    Prime de risque = E/P - taux réel à 10 ans. Les entreprises en perte comptent pour un bénéfice nul."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    comp = json.loads((DATA / "companies.json").read_text(encoding="utf-8"))["companies"]
+    out = {}
+    rates = {}
+    try:
+        if demo:
+            rates = {"US": {"nominal": 4.2, "real": 1.9, "inflation": 2.3}, "EZ": {"nominal": 2.6, "real": 0.6, "inflation": 2.0}}
+        else:
+            import sources
+            us_n, us_r, us_be = sources.fred("DGS10").iloc[-1], sources.fred("DFII10").iloc[-1], sources.fred("T10YIE").iloc[-1]
+            ez_n = sources.ecb("YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y").iloc[-1]
+            rates = {"US": {"nominal": float(us_n), "real": float(us_r), "inflation": float(us_be)},
+                     # pas de taux réel gratuit pour la zone euro : taux AAA 10 ans moins la cible de 2 % de la BCE
+                     "EZ": {"nominal": float(ez_n), "real": float(ez_n) - 2.0, "inflation": 2.0, "approx": True}}
+    except Exception as e:  # noqa: BLE001
+        log(f"ECHEC taux pour la prévision de marché : {e}")
+    for z in ("US", "EZ"):
+        rows = [c for c in comp if c["z"] == z and c.get("cap")]
+        earn = sum(c["cap"] / c["pe"] for c in rows if c.get("pe"))
+        cap = sum(c["cap"] for c in rows if c.get("pe") or c.get("loss"))
+        if not cap:
+            continue
+        ey = earn / cap * 100
+        r = rates.get(z, {})
+        erp = ey - r["real"] if "real" in r else None
+        out[z] = {"pe": rnd(100 / ey, 1), "earnings_yield": rnd(ey, 2), "real_yield": rnd(r.get("real"), 2),
+                  "nominal_yield": rnd(r.get("nominal"), 2), "inflation": rnd(r.get("inflation"), 2),
+                  "expected_real": rnd(ey, 2), "expected_nominal": rnd(ey + r["inflation"], 2) if "inflation" in r else None,
+                  "erp": rnd(erp, 2), "approx_real": bool(r.get("approx")), "n": len(rows)}
+    return out
 
 
 def _xy(snapshots, ks, mid, h):

@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: mise-a-jour
@@ -43,6 +44,10 @@ jobs:
         continue-on-error: true   # un échec ici ne doit pas empêcher d'enregistrer le reste
         run: python scripts/build_predictions.py
 
+      - name: Tester les scores sur le passé (analyse)
+        continue-on-error: true
+        run: python scripts/analyse_decision.py > /dev/null
+
       - name: Enregistrer les nouvelles données
         run: |
           git config user.name "barometre-bot"
@@ -54,3 +59,28 @@ jobs:
             git commit -m "Mise à jour des données ($(date -u +%Y-%m-%d))"
             git pull --rebase origin main && git push
           fi
+
+      - name: Contrôle de santé des données
+        run: python scripts/check_health.py --report sante.md
+
+      # En cas de problème : un ticket GitHub « alerte-donnees » (e-mail au propriétaire du dépôt).
+      - name: Ouvrir ou compléter une alerte
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f sante.md ] || echo "Une étape de la collecte a échoué : voir ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > sante.md
+          echo -e "\n[Détail de la collecte](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> sante.md
+          gh label create alerte-donnees --color d73a4a --description "Problème détecté dans la collecte" --force
+          n=$(gh issue list --label alerte-donnees --state open --json number --jq '.[0].number')
+          if [ -n "$n" ]; then gh issue comment "$n" --body-file sante.md
+          else gh issue create --title "Alerte données : problème dans la collecte du $(date -u +%d/%m/%Y)" --label alerte-donnees --body-file sante.md; fi
+
+      - name: Fermer l'alerte si tout est rentré dans l'ordre
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label alerte-donnees --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Collecte du $(date -u +%d/%m/%Y) sans problème : alerte fermée automatiquement."
+          done
