@@ -8,13 +8,13 @@
   "dynamique": {
    "correlation_moyenne": 0.086,
    "pct_dates_correlation_positive": 87.0,
-   "ecart_quintiles_perf12m": 9.3,
+   "ecart_quintiles_perf12m": 9.2,
    "ecart_quintiles_relatif_secteur": 9.5,
    "dispersion_top": 61.9,
-   "dispersion_bas": 63.0
+   "dispersion_bas": 63.1
   },
   "risque": {
-   "correlation_moyenne": -0.067,
+   "correlation_moyenne": -0.066,
    "pct_dates_correlation_positive": 29.0,
    "ecart_quintiles_perf12m": -25.7,
    "ecart_quintiles_relatif_secteur": -25.8,
@@ -31,27 +31,27 @@
   }
  },
  "controles": {
-  "correlation_score_potentiel_analystes": -0.5,
-  "correlation_score_perf_passee_1an": 0.39,
+  "correlation_score_potentiel_analystes": -0.54,
+  "correlation_score_perf_passee_1an": 0.47,
   "score_moyen_par_recommandation": {
-   "buy": 52.2,
-   "hold": 53.5,
-   "none": 51.8,
-   "strong_buy": 48.4,
-   "underperform": 55.3
+   "buy": 51.0,
+   "hold": 52.0,
+   "none": 49.1,
+   "strong_buy": 47.5,
+   "underperform": 54.1
   },
   "correlations_entre_familles": {
-   "f_valorisation/f_dynamique": -0.13,
+   "f_valorisation/f_dynamique": -0.11,
    "f_valorisation/f_risque": 0.24,
    "f_valorisation/f_qualite": -0.23,
-   "f_dynamique/f_risque": 0.41,
+   "f_dynamique/f_risque": 0.42,
    "f_dynamique/f_qualite": 0.06,
    "f_risque/f_qualite": -0.07
   },
   "secteurs_poids_tendance": 0.4,
   "secteurs_correlation_classement_avec_vs_sans_tendance": 0.95,
-  "secteurs_ecart_type_part_entreprises": 6.0,
-  "secteurs_ecart_type_part_tendance": 28.0
+  "secteurs_ecart_type_part_entreprises": 5.8,
+  "secteurs_ecart_type_part_tendance": 27.5
  },
  "macro": {
   "commun": {
@@ -90,7 +90,7 @@
     ],
     "strategies": {
      "achat_conservation": {
-      "rendement_annuel": 5.6,
+      "rendement_annuel": 5.7,
       "volatilite": 14.9,
       "pire_baisse": -54.2,
       "ratio_rendement_risque": 0.38,
@@ -107,7 +107,7 @@
       "rendement_annuel": 5.8,
       "volatilite": 11.7,
       "pire_baisse": -22.8,
-      "ratio_rendement_risque": 0.49,
+      "ratio_rendement_risque": 0.5,
       "mois_investis_pct": 84.0
      },
      "investi_si_score_55": {
@@ -343,7 +343,7 @@
      {
       "tranche": "> 65",
       "mois": 75,
-      "perf_12m": -0.0,
+      "perf_12m": 0.0,
       "pct_positif": 49.0,
       "pire_baisse_12m": -9.4
      }
@@ -353,25 +353,25 @@
       "rendement_annuel": 1.8,
       "volatilite": 17.3,
       "pire_baisse": -56.2,
-      "ratio_rendement_risque": 0.1,
+      "ratio_rendement_risque": 0.11,
       "mois_investis_pct": null
      },
      "investi_si_score_45": {
-      "rendement_annuel": 2.1,
+      "rendement_annuel": 2.2,
       "volatilite": 14.9,
       "pire_baisse": -29.8,
-      "ratio_rendement_risque": 0.14,
+      "ratio_rendement_risque": 0.15,
       "mois_investis_pct": 90.0
      },
      "investi_si_score_50": {
-      "rendement_annuel": -0.3,
+      "rendement_annuel": -0.2,
       "volatilite": 13.2,
       "pire_baisse": -47.5,
       "ratio_rendement_risque": -0.02,
       "mois_investis_pct": 79.0
      },
      "investi_si_score_55": {
-      "rendement_annuel": -0.2,
+      "rendement_annuel": -0.1,
       "volatilite": 12.4,
       "pire_baisse": -42.2,
       "ratio_rendement_risque": -0.01,
@@ -436,7 +436,7 @@
      },
      "investi_si_score_55": {
       "rendement_annuel": -0.3,
-      "volatilite": 13.1,
+      "volatilite": 13.0,
       "pire_baisse": -45.8,
       "ratio_rendement_risque": -0.02,
       "mois_investis_pct": 73.0
