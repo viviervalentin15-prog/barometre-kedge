@@ -446,18 +446,21 @@ def market_valuation(demo: bool) -> dict:
     comp = json.loads((DATA / "companies.json").read_text(encoding="utf-8"))["companies"]
     out = {}
     rates = {}
-    try:
-        if demo:
-            rates = {"US": {"nominal": 4.2, "real": 1.9, "inflation": 2.3}, "EZ": {"nominal": 2.6, "real": 0.6, "inflation": 2.0}}
-        else:
-            import sources
+    if demo:
+        rates = {"US": {"nominal": 4.2, "real": 1.9, "inflation": 2.3}, "EZ": {"nominal": 2.6, "real": 0.6, "inflation": 2.0}}
+    else:
+        import sources
+        try:
             us_n, us_r, us_be = sources.fred("DGS10").iloc[-1], sources.fred("DFII10").iloc[-1], sources.fred("T10YIE").iloc[-1]
-            ez_n = sources.ecb("YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y").iloc[-1]
-            rates = {"US": {"nominal": float(us_n), "real": float(us_r), "inflation": float(us_be)},
-                     # pas de taux réel gratuit pour la zone euro : taux AAA 10 ans moins la cible de 2 % de la BCE
-                     "EZ": {"nominal": float(ez_n), "real": float(ez_n) - 2.0, "inflation": 2.0, "approx": True}}
-    except Exception as e:  # noqa: BLE001
-        log(f"ECHEC taux pour la prévision de marché : {e}")
+            rates["US"] = {"nominal": float(us_n), "real": float(us_r), "inflation": float(us_be)}
+        except Exception as e:  # noqa: BLE001
+            log(f"ECHEC taux américains pour la prévision de marché : {e}")
+        try:
+            ez_n = float(sources.ecb("YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_10Y").iloc[-1])
+            # pas de taux réel gratuit pour la zone euro : taux AAA 10 ans moins la cible de 2 % de la BCE
+            rates["EZ"] = {"nominal": ez_n, "real": ez_n - 2.0, "inflation": 2.0, "approx": True}
+        except Exception as e:  # noqa: BLE001
+            log(f"ECHEC taux zone euro pour la prévision de marché : {e}")
     for z in ("US", "EZ"):
         rows = [c for c in comp if c["z"] == z and c.get("cap")]
         earn = sum(c["cap"] / c["pe"] for c in rows if c.get("pe"))

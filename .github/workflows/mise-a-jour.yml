@@ -42,6 +42,8 @@ jobs:
 
       - name: Calculer les prévisions (séparées du score)
         continue-on-error: true   # un échec ici ne doit pas empêcher d'enregistrer le reste
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python scripts/build_predictions.py
 
       - name: Tester les scores sur le passé (analyse)
