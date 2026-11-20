@@ -95,18 +95,20 @@ function applyProfile(id) {
   if (!p) return;
   S.profile = p.id;
   const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
+  // Profil par défaut : on reprend exactement les valeurs de la collecte (pas d'écart d'arrondi).
+  const isDefault = p.id === S.companies.default_profile || S.companies.companies[0]?.u_dynamique === undefined;
   for (const c of S.companies.companies) {
-    if (c._nd === undefined) c._nd = c.sc == null;
-    c.sc = r1(profileScore(c, p.weights, "f_"));
-    if (c.u_dynamique !== undefined) c.su = r1(profileScore(c, p.weights, "u_"));
+    if (c._nd === undefined) Object.assign(c, { _nd: c.sc == null, _sc0: c.sc, _su0: c.su, _rk0: c.rk });
+    c.sc = isDefault ? c._sc0 : r1(profileScore(c, p.weights, "f_"));
+    c.su = isDefault ? c._su0 : r1(profileScore(c, p.weights, "u_"));
   }
-  const rk = rankInSector(S.companies.companies);
-  S.companies.companies.forEach((c) => (c.rk = rk[c.t] ?? null));
+  const rk = isDefault ? null : rankInSector(S.companies.companies);
+  S.companies.companies.forEach((c) => (c.rk = isDefault ? c._rk0 : rk[c.t] ?? null));
   S.companies.families.forEach((f) => (f.weight = p.weights[f.id] ?? f.weight));
-  if (S.sectors && S.companies.companies[0]?.u_dynamique !== undefined) {
+  if (S.sectors) {
     for (const [view, v] of Object.entries(S.sectors.views)) {
       v._orig ||= v.sectors;
-      v.sectors = sectorItems(v._orig, S.companies.companies, VIEW_ZONES[view], S.sectors.method);
+      v.sectors = isDefault ? v._orig : sectorItems(v._orig, S.companies.companies, VIEW_ZONES[view], S.sectors.method);
     }
   }
   try { localStorage.setItem("profile", p.id); } catch { /* choix valable pour la session */ }
