@@ -245,27 +245,34 @@ def save_infos(infos: dict) -> None:
     (RAW / "company_info.json").write_text(json.dumps(infos, ensure_ascii=False), encoding="utf-8")
 
 
-def download_prices(tickers: list[str]) -> pd.DataFrame:
+def _tidy(frames: list) -> pd.DataFrame:
+    df = pd.concat(frames, axis=1)
+    df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
+    df = df.groupby(level=0).last().sort_index()
+    return df.loc[:, ~df.columns.duplicated()]
+
+
+def download_prices(tickers: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Clôtures et ouvertures quotidiennes sur 5 ans (les ouvertures servent à l'indicateur de séance)."""
     import yfinance as yf
     yf.set_tz_cache_location("/tmp/yf-cache")
-    frames = []
+    frames, oframes = [], []
     for k in range(0, len(tickers), 80):
         chunk = tickers[k:k + 80]
         for attempt in range(3):
             try:
-                px = yf.download(chunk, period="5y", auto_adjust=True, progress=False, threads=False)["Close"]
+                raw = yf.download(chunk, period="5y", auto_adjust=True, progress=False, threads=False)
+                px, op = raw["Close"], raw["Open"]
                 if isinstance(px, pd.Series):
-                    px = px.to_frame(chunk[0])
+                    px, op = px.to_frame(chunk[0]), op.to_frame(chunk[0])
                 frames.append(px)
+                oframes.append(op)
                 break
             except Exception as e:  # noqa: BLE001
                 log(f"  cours, lot {k}: {e}")
                 time.sleep(3 * (attempt + 1))
         log(f"  cours : {min(k + 80, len(tickers))}/{len(tickers)}")
-    prices = pd.concat(frames, axis=1)
-    prices.index = pd.to_datetime(prices.index).tz_localize(None).normalize()
-    prices = prices.groupby(level=0).last().sort_index()
-    return prices.loc[:, ~prices.columns.duplicated()]
+    return _tidy(frames), _tidy(oframes)
 
 
 BENCHMARKS = {"US": ("^GSPC", "S&P 500"), "EZ": ("^STOXX50E", "Euro Stoxx 50")}
@@ -297,6 +304,19 @@ def eurusd() -> float:
 # ---------------------------------------------------------------------------
 # 3. Indicateurs
 # ---------------------------------------------------------------------------
+def session_metrics(o: pd.Series, c: pd.Series, n: int = 12) -> dict:
+    """Variation ouverture -> clôture (%) de la dernière séance complète et moyenne des n dernières.
+    Séances sans ouverture ou clôture valide (séance du jour en cours, ouverture nulle) ignorées."""
+    df = pd.DataFrame({"o": o, "c": c}).dropna()
+    df = df[(df.o > 0) & (df.c > 0)]
+    r = (df.c / df.o - 1) * 100
+    r = r[r.abs() < 50]   # garde-fou contre une ouverture aberrante
+    if r.empty:
+        return {}
+    last = r.iloc[-n:]
+    return {"date": r.index[-1].strftime("%Y-%m-%d"), "last": float(r.iloc[-1]), "avg12": float(last.mean()), "n": int(len(last))}
+
+
 def price_metrics(c: pd.Series) -> dict:
     c = c.dropna()
     out = {}
@@ -429,25 +449,27 @@ def main(demo: bool, rebuild_universe: bool) -> None:
     tickers = universe["ticker"].tolist()
     if demo:
         prices, infos = demo_data(universe)
+        opens = prices.shift(1) * (1 + np.random.default_rng(1).normal(0, 0.004, prices.shape))
         fx = 1.10
         bench = pd.DataFrame({z: prices.iloc[:, k::7].mean(axis=1) for k, z in enumerate(BENCHMARKS)})
     else:
         fetch_infos(tickers, infos)
         save_infos(infos)
         log("Téléchargement des cours sur 5 ans...")
-        prices = download_prices(tickers)
+        prices, opens = download_prices(tickers)
         fx = eurusd()
         bench = download_benchmarks()
     log(f"EUR/USD utilisé pour comparer les tailles : {fx:.4f}")
 
     # --- tableau des entreprises ---
-    rows = []
+    rows, sessions = [], {}
     for _, u in universe.iterrows():
         t = u["ticker"]
         i = infos.get(t) or {}
         if not i.get("sector") or i.get("sector") not in sectors_cfg:
             continue
         m = {**info_metrics(i), **(price_metrics(prices[t]) if t in prices else {})}
+        sessions[t] = session_metrics(opens[t], prices[t]) if t in opens and t in prices else {}
         cap = i.get("marketCap") or np.nan
         cap_usd = cap * (fx if i.get("currency") == "EUR" else 1) if i.get("currency") in ("EUR", "USD") else np.nan
         rows.append({"ticker": t, "zone": u["zone"], "name": display_name(i, t),
@@ -625,6 +647,7 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "sc": rnd(row["score"], 1), **{f"f_{fid}": rnd(row[f"f_{fid}"], 1) for fid in fams},
             "miss": int(row["n_missing"]), "loss": bool(row["loss"]), "su": rnd(row["score_univ"], 1),
             "p1y": rnd(row.get("perf_1y"), 1), "pytd": rnd(row.get("perf_ytd"), 1), "pe": rnd(row.get("pe"), 1),
+            "s1": rnd(sessions.get(t, {}).get("last"), 2), "s12": rnd(sessions.get(t, {}).get("avg12"), 2),
             "dy": rnd(row.get("div_yield"), 2), "rk": int(row["rank_sector"]) if pd.notna(row["rank_sector"]) else None,
         })
         if t in prices:
@@ -644,6 +667,8 @@ def main(demo: bool, rebuild_universe: bool) -> None:
             "score": rnd(row["score"], 1), "rank_sector": list_rows[-1]["rk"],
             "sector_size": int((df.sector == row["sector"]).sum()),
             "families": {fid: rnd(row[f"f_{fid}"], 1) for fid in fams},
+            "session": ({"date": sessions[t]["date"], "last": rnd(sessions[t]["last"], 2), "avg12": rnd(sessions[t]["avg12"], 2), "n": sessions[t]["n"]}
+                        if sessions.get(t) else None),
             "n_missing": int(row["n_missing"]), "loss": bool(row["loss"]), "score_univ": rnd(row["score_univ"], 1),
             "families_univ": {fid: rnd(row[f"u_{fid}"], 1) for fid in fams},
             "metrics": {m: {"value": rnd(row.get(m)), "score": rnd(ms.loc[t, m], 1) if m in ms else None,

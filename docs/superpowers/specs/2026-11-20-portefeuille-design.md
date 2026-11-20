@@ -1,3 +1,5 @@
+> **Mise à jour du 2026-11-20 :** à la demande de Valentin, l'envoi par mail est retiré. Les informations restent uniquement sur la page Portefeuille. Les sections sur le mail ci-dessous ne s'appliquent plus.
+
 # Portefeuille personnel et compte rendu par mail
 
 ## Intention
