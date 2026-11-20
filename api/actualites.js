@@ -4,7 +4,8 @@
 
 const MAX_ITEMS = 10;
 const MAX_QUERY = 120;
-const QUOTE_PAGE = /cours action .*cotation bourse/i; // pages de cotation automatiques, sans information
+// pages de cotation et fiches de produits dérivés générées automatiquement, sans information
+const QUOTE_PAGE = /cours action .*cotation bourse|cotation (bourse|boerse)|\b(warrant|turbo|mini[- ]future|certificat)\b/i;
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 function decode(s) {

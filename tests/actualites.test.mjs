@@ -5,11 +5,12 @@ const xml = `<?xml version="1.0"?><rss><channel><title>x</title>
 <item><title>TotalEnergies relève son dividende &amp; rachète des actions - Les Echos</title><link>https://news.google.com/rss/articles/abc?oc=5</link><pubDate>Thu, 19 Nov 2026 08:30:00 GMT</pubDate><source url="https://www.lesechos.fr">Les Echos</source></item>
 <item><title><![CDATA[Pétrole : le Brent recule <encore> - Boursorama]]></title><link>https://news.google.com/rss/articles/def</link><pubDate>Fri, 20 Nov 2026 07:00:00 GMT</pubDate><source url="https://www.boursorama.com">Boursorama</source></item>
 <item><title>APPLE Cours Action AAPL, Cotation Bourse NASDAQ - Boursorama</title><link>https://www.boursorama.com/x</link><pubDate>Fri, 20 Nov 2026 09:00:00 GMT</pubDate><source url="https://www.boursorama.com">Boursorama</source></item>
+<item><title>actualites Costco DWRT 900C 0227 (MR4ZQS) - Warrant | DE000MR4ZQS1 - Cotation BOERSE STUTTGART - Bourse Direct</title><link>https://www.boursedirect.fr/x</link><pubDate>Fri, 20 Nov 2026 09:00:00 GMT</pubDate><source url="https://www.boursedirect.fr">Bourse Direct</source></item>
 <item><title>Lien douteux - X</title><link>javascript:alert(1)</link><pubDate>Fri, 20 Nov 2026 07:00:00 GMT</pubDate><source url="x">X</source></item>
 </channel></rss>`;
 
 const items = parseRss(xml);
-assert.equal(items.length, 2, "le lien non http(s) et la page de cotation doivent être écartés");
+assert.equal(items.length, 2, "le lien non http(s), les pages de cotation et de warrants doivent être écartés");
 assert.equal(items[0].title, "Pétrole : le Brent recule <encore>", "plus récent d'abord, suffixe source retiré, CDATA lu");
 assert.equal(items[1].title, "TotalEnergies relève son dividende & rachète des actions");
 assert.equal(items[1].source, "Les Echos");
@@ -39,3 +40,10 @@ const resMany = fakeRes();
 await handler({ method: "GET", query: { q: ["a", "b", "c", "d", "e", "f"] } }, resMany);
 assert.equal(resMany.code, 400, "plus de 5 recherches -> 400");
 console.log("actualites.test (plusieurs recherches) : OK");
+
+// nom court : pas de « & » orphelin en fin de nom
+const app = (await import("node:fs")).readFileSync(new URL("../site/app.js", import.meta.url), "utf8");
+const shortName = Function(app.match(/function shortName\(n\) \{[\s\S]*?\n\}/)[0] + "; return shortName;")();
+assert.equal(shortName("JPMorgan Chase & Co."), "JPMorgan Chase");
+assert.equal(shortName("Procter & Gamble Company"), "Procter & Gamble");
+console.log("actualites.test (noms) : OK");

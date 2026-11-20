@@ -114,7 +114,7 @@ const signed = (x, d = 1) => (x == null ? "–" : (x > 0 ? "+" : "") + fmt(x, d)
 /* nom court pour les graphiques et tableaux comparatifs */
 function shortName(n) {
   let x = String(n || "").split(" - ")[0].replace(/,?\s*(Société Européenne|Société en commandite par actions|Société anonyme|S\.p\.A\.|S\.A\.|SA|SE|S\.E\.|N\.V\.|NV|AG|plc|PLC|Inc\.?|Corporation|Corp\.?|Company|Co\.|Ltd\.?|Holding(s)?|Group|Aktiengesellschaft|Oyj|ASA)(?=$|[\s,])/g, "").replace(/^The\s+/, "").replace(/\s{2,}/g, " ").trim();
-  x = x.replace(/[,\-–\s]+$/, "");
+  x = x.replace(/[,\-–&\s]+$/, "");
   return x.length > 26 ? x.slice(0, 25).trim() + "…" : x || n;
 }
 /* valeur + unité, ou un simple tiret si la donnée manque */
