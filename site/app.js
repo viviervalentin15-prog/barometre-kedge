@@ -51,9 +51,30 @@ function toggleTheme() {
 
 /* ---------- actualités (Google Actualités, à la demande ; hors score) ---------- */
 const NEWS = {};
-function newsCard(id, q, title) {
-  return `<section class="card" id="${id}" data-q="${esc(q)}"><div class="card-head"><h2>${title}</h2><span class="pill">Google Actualités · 30 derniers jours</span></div>
-    <div class="news-body"></div><p class="src">Titres de presse donnés à titre d'information, avec un lien vers l'article : ils n'entrent dans aucun score.</p></section>`;
+const FIN_TERMS = "(bourse OR action OR résultats OR analystes)";
+const SECTOR_NEWS = {
+  Energy: '(pétrole OR "gaz naturel" OR pétrolières OR baril OR raffinage)',
+  Technology: '(semi-conducteurs OR logiciels OR "valeurs technologiques" OR cloud)',
+  "Financial Services": '(banques OR assureurs OR "secteur bancaire" OR "gestion d\'actifs")',
+  Healthcare: '(pharmaceutique OR laboratoires OR biotech OR medtech)',
+  "Consumer Defensive": '(agroalimentaire OR "grande distribution" OR spiritueux OR cosmétiques)',
+  "Consumer Cyclical": '(luxe OR "constructeurs automobiles" OR automobile OR "commerce en ligne")',
+  Industrials: '(aéronautique OR défense OR industriels OR "biens d\'équipement")',
+  "Basic Materials": '(chimie OR minières OR acier OR métaux OR cuivre)',
+  Utilities: '(électricité OR énergéticiens OR renouvelables OR "services publics")',
+  "Real Estate": '(foncières OR "immobilier coté" OR SIIC OR REIT)',
+  "Communication Services": '(télécoms OR "opérateurs télécoms" OR médias OR publicité)',
+};
+// Un secteur = une recherche de thème + une par entreprise parmi ses 3 plus grosses capitalisations (zone choisie)
+function sectorNews(id) {
+  const zones = VIEW_ZONES[S.view];
+  const top = (S.companies?.companies || []).filter((c) => c.s === id && zones.includes(c.z) && c.cap).sort((a, b) => b.cap - a.cap).slice(0, 3).map((c) => shortName(c.n));
+  const q = [`${SECTOR_NEWS[id] || `"${sectorLabel(id)}"`} ${FIN_TERMS}`, ...top.map((n) => `"${n}" ${FIN_TERMS}`)];
+  return { q, note: `thème du secteur${top.length ? ` et ${top.join(", ")}` : ""}` };
+}
+function newsCard(id, q, title, note = "") {
+  return `<section class="card" id="${id}" data-q="${esc(JSON.stringify([].concat(q)))}"><div class="card-head"><h2>${title}</h2><span class="pill">Google Actualités · 30 derniers jours</span></div>
+    ${note ? `<p class="hint">Titres mélangés à tour de rôle : ${esc(note)}.</p>` : ""}<div class="news-body"></div><p class="src">Titres de presse donnés à titre d'information, avec un lien vers l'article : ils n'entrent dans aucun score.</p></section>`;
 }
 function newsDate(iso) {
   const d = new Date(iso), h = (Date.now() - d) / 36e5;
@@ -65,9 +86,10 @@ async function fillNews(el) {
   if (!el || el.dataset.loaded) return;
   el.dataset.loaded = "1";
   const q = el.dataset.q, body = el.querySelector(".news-body");
+  const qs = JSON.parse(q).map((x) => `q=${encodeURIComponent(x)}`).join("&");
   body.innerHTML = '<p class="hint">Chargement des actualités…</p>';
   try {
-    NEWS[q] ||= fetch(`/api/actualites?q=${encodeURIComponent(q)}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    NEWS[q] ||= fetch(`/api/actualites?${qs}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
     const { items = [] } = await NEWS[q];
     body.innerHTML = items.length
       ? `<ul class="news">${items.map((i) => `<li><a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a><span class="meta"><b>${esc(i.source || "Presse")}</b> · ${newsDate(i.date)}</span></li>`).join("")}</ul>`
@@ -428,7 +450,7 @@ function pageSector(app, id) {
         <p class="hint">Moyenne pondérée par la capitalisation. Notes sur 100 face à l'ensemble des entreprises analysées, pour comparer les secteurs entre eux.</p><div id="sector-fams" class="chart chart-md"></div></div>
     </section>
     <section class="card"><div class="card-head"><h2>Entreprises du secteur</h2></div><div id="table"></div></section>
-    ${newsCard("s-news", `secteur ${s.label.toLowerCase()} bourse`, "Actualités du secteur")}`;
+    ${(({ q, note }) => newsCard("s-news", q, "Actualités du secteur", note))(sectorNews(id))}`;
   chart("sector-index").setOption({
     grid: { left: 44, right: 16, top: 16, bottom: 40 }, tooltip: { trigger: "axis", valueFormatter: (v) => fmt(v) },
     xAxis: { type: "time", splitLine: { show: false } },

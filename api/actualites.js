@@ -38,20 +38,47 @@ export function parseRss(xml) {
   return items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, MAX_ITEMS);
 }
 
-export default async function handler(req, res) {
-  const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
-  if (req.method !== "GET" || !q || q.length > MAX_QUERY) {
-    return res.status(400).json({ error: "Paramètre q requis (120 caractères au plus).", items: [] });
+const MAX_QUERIES = 5;
+const MAX_MERGED = 12;
+
+// Mélange plusieurs listes à tour de rôle (1er de chaque liste, puis 2e…), sans doublon :
+// un secteur n'est pas accaparé par l'actualité d'une seule entreprise.
+export function mergeRoundRobin(lists, max = MAX_MERGED) {
+  const out = [], seen = new Set();
+  const key = (i) => i.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const pos = lists.map(() => 0);
+  while (out.length < max && lists.some((l, j) => pos[j] < l.length)) {
+    for (let j = 0; j < lists.length && out.length < max; j++) {
+      while (pos[j] < lists[j].length) {        // un doublon ne fait pas perdre son tour à la liste
+        const it = lists[j][pos[j]++];
+        if (seen.has(it.url) || seen.has(key(it))) continue;
+        seen.add(it.url); seen.add(key(it)); out.push(it);
+        break;
+      }
+    }
   }
+  return out;
+}
+
+async function search(q) {
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`${q} when:30d`)}&hl=fr&gl=FR&ceid=FR:fr`;
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (barometre-kedge)" } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const items = parseRss(await r.text());
-    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=86400");
-    return res.status(200).json({ items });
-  } catch (e) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 (barometre-kedge)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return parseRss(await r.text());
+}
+
+export default async function handler(req, res) {
+  const raw = req.query?.q;
+  const qs = (Array.isArray(raw) ? raw : [raw]).map((q) => (typeof q === "string" ? q.trim() : ""));
+  if (req.method !== "GET" || !qs.length || qs.length > MAX_QUERIES || qs.some((q) => !q || q.length > MAX_QUERY)) {
+    return res.status(400).json({ error: `Paramètre q requis (${MAX_QUERIES} recherches de ${MAX_QUERY} caractères au plus).`, items: [] });
+  }
+  const results = await Promise.allSettled(qs.map(search));
+  const lists = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (!lists.length) {
     res.setHeader("Cache-Control", "s-maxage=300");
     return res.status(502).json({ error: "Source d'actualités indisponible.", items: [] });
   }
+  res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=86400");
+  return res.status(200).json({ items: lists.length === 1 ? lists[0] : mergeRoundRobin(lists) });
 }

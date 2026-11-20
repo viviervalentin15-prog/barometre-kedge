@@ -26,3 +26,16 @@ for (const q of [undefined, "", "   ", "x".repeat(121)]) {
   assert.equal(res.code, 400, `q=${JSON.stringify(q)} doit donner 400`);
 }
 console.log("actualites.test : OK");
+
+// plusieurs recherches : mélange à tour de rôle, sans doublon, 12 titres au plus
+const { mergeRoundRobin } = await import("../api/actualites.js");
+const L = (p, n) => Array.from({ length: n }, (_, k) => ({ title: `${p}${k}`, source: "S", url: "https://x/" + p + k, date: new Date(Date.UTC(2026, 10, 20, 12 - k)).toISOString() }));
+const merged = mergeRoundRobin([L("a", 10), L("b", 2), [{ ...L("a", 1)[0] }, ...L("c", 1)]], 12);
+assert.deepEqual(merged.slice(0, 6).map((i) => i.title), ["a0", "b0", "c0", "a1", "b1", "a2"], "à tour de rôle, doublon a0 retiré");
+assert.equal(new Set(merged.map((i) => i.url)).size, merged.length, "pas de doublon");
+assert.ok(merged.length <= 12);
+
+const resMany = fakeRes();
+await handler({ method: "GET", query: { q: ["a", "b", "c", "d", "e", "f"] } }, resMany);
+assert.equal(resMany.code, 400, "plus de 5 recherches -> 400");
+console.log("actualites.test (plusieurs recherches) : OK");
